@@ -1,0 +1,1639 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Libro Mastro — Analisi Transazioni</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600;700&family=Spectral+SC:wght@600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #16241f;
+    --bg-alt: #1d3129;
+    --paper: #eef1e4;
+    --paper-dim: #e3e7d6;
+    --ink: #22301f;
+    --ink-soft: #52604c;
+    --rule: #c7cdb4;
+    --gold: #b8862c;
+    --gold-soft: #e4c98a;
+    --rust: #a34a30;
+    --rust-soft: #d98a6f;
+    --green-ink: #2f5c3f;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      repeating-linear-gradient(180deg, transparent, transparent 27px, rgba(255,255,255,0.02) 28px),
+      radial-gradient(ellipse at top, var(--bg-alt), var(--bg) 70%);
+    color:var(--ink);
+    font-family:'IBM Plex Mono', monospace;
+    padding:32px 20px 80px;
+    min-height:100vh;
+  }
+  .wrap{max-width:1180px;margin:0 auto;}
+
+  /* HEADER */
+  .ledger-header{
+    display:flex; justify-content:space-between; align-items:flex-end; gap:24px;
+    padding-bottom:18px; margin-bottom:28px;
+    border-bottom:3px double var(--gold-soft);
+  }
+  .ledger-title{
+    font-family:'Spectral SC', serif; font-weight:600;
+    font-size:30px; color:var(--paper); letter-spacing:0.5px;
+  }
+  .ledger-sub{
+    font-family:'Spectral', serif; font-style:italic; color:var(--gold-soft);
+    font-size:14px; margin-top:4px;
+  }
+  .upload-box{
+    background:var(--paper); border-radius:3px; padding:12px 16px;
+    box-shadow:0 6px 18px rgba(0,0,0,0.35);
+    display:flex; align-items:center; gap:12px; font-size:12px;
+  }
+  .upload-box label.file-btn{
+    background:var(--ink); color:var(--paper); padding:8px 14px; border-radius:2px;
+    cursor:pointer; font-weight:600; letter-spacing:0.3px; white-space:nowrap;
+  }
+  .upload-box label.file-btn:hover{background:var(--green-ink);}
+  #fileInput{display:none;}
+  #uploadStatus{color:var(--ink-soft); max-width:220px;}
+
+  .io-row{
+    display:flex; align-items:center; gap:10px; margin-bottom:20px; flex-wrap:wrap;
+  }
+  .io-btn{
+    background:transparent; border:1px solid var(--gold-soft); color:var(--gold-soft);
+    padding:6px 13px; border-radius:14px; font-size:11.5px; font-family:'IBM Plex Mono', monospace;
+    cursor:pointer; letter-spacing:0.3px;
+  }
+  .io-btn:hover{background:var(--gold-soft); color:var(--bg);}
+  label.io-btn{display:inline-block;}
+  .io-status{font-size:11.5px; color:var(--gold-soft); font-style:italic;}
+  .io-btn-solid{
+    background:var(--ink); color:var(--paper); border:none; padding:6px 12px; border-radius:2px;
+    cursor:pointer; font-family:'IBM Plex Mono', monospace; font-size:11.5px; font-weight:600;
+  }
+  .io-btn-solid:hover{background:var(--green-ink);}
+  .chart-period-select{
+    font-family:'IBM Plex Mono', monospace; font-size:11px; padding:5px 7px;
+    border:1px solid var(--rule); border-radius:2px; background:#fff; color:var(--ink); cursor:pointer;
+  }
+  .detected-row{
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+    padding:7px 4px; border-bottom:1px solid var(--rule); font-size:12px; flex-wrap:wrap;
+  }
+  .detected-row:last-child{border-bottom:none;}
+  .detected-row .di-main{display:flex; flex-direction:column; gap:2px;}
+  .detected-row .di-meta{color:var(--ink-soft); font-size:11px;}
+
+  /* MONTH CHIPS */
+  .months-row{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:24px;}
+  .chip{
+    background:var(--paper-dim); border:1px solid var(--rule); color:var(--ink);
+    padding:5px 12px; border-radius:14px; font-size:12px; cursor:pointer;
+    font-family:'IBM Plex Mono', monospace; user-select:none;
+  }
+  .chip.active{background:var(--gold); border-color:var(--gold); color:#221a08; font-weight:600;}
+  .chip.empty{opacity:0.5; font-style:italic;}
+  .chip.excluded{background:var(--rust); border-color:var(--rust); color:#fff; text-decoration:line-through;}
+
+  /* STAMP ROW */
+  .stamp-row{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:28px;}
+  .stamp{
+    background:var(--paper); border-radius:4px; padding:18px 20px;
+    box-shadow:0 8px 20px rgba(0,0,0,0.3);
+    position:relative; overflow:hidden;
+  }
+  .stamp::before{
+    content:""; position:absolute; inset:6px; border:1px solid var(--rule); border-radius:2px; pointer-events:none;
+  }
+  .stamp-label{font-size:11px; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-soft); font-weight:600;}
+  .stamp-value{font-family:'Spectral', serif; font-size:30px; font-weight:600; margin-top:6px;}
+  .stamp-value.pos{color:var(--green-ink);}
+  .stamp-value.neg{color:var(--rust);}
+  .stamp-value.neutral{color:var(--gold);}
+  .stamp.balance{background:var(--ink); }
+  .stamp.balance::before{border-color:rgba(238,241,228,0.25);}
+  .stamp.balance .stamp-label{color:var(--gold-soft);}
+  .stamp.balance .stamp-value{color:var(--paper); font-family:'Spectral SC', serif; letter-spacing:0.5px;}
+
+  /* SECTIONS */
+  .section{
+    background:var(--paper); border-radius:4px; padding:20px 22px; margin-bottom:22px;
+    box-shadow:0 8px 20px rgba(0,0,0,0.28);
+  }
+  .section-title{
+    font-family:'Spectral SC', serif; font-size:15px; letter-spacing:1px; color:var(--ink);
+    border-bottom:2px solid var(--rule); padding-bottom:8px; margin-bottom:16px;
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .two-col{display:grid; grid-template-columns:1.1fr 1fr; gap:20px;}
+  @media (max-width:860px){ .two-col{grid-template-columns:1fr;} }
+  canvas{max-width:100%;}
+
+  /* FILTER BAR */
+  .filters{display:flex; flex-wrap:wrap; gap:10px; margin-bottom:16px; align-items:end;}
+  .filters .f{display:flex; flex-direction:column; gap:4px;}
+  .filters label{font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:var(--ink-soft);}
+  .filters input, .filters select{
+    font-family:'IBM Plex Mono', monospace; font-size:12.5px; padding:6px 8px;
+    border:1px solid var(--rule); border-radius:2px; background:#fff; color:var(--ink);
+  }
+  .filters input[type=text]{width:190px;}
+  .filters input.amt{width:80px;}
+  .filters button{
+    background:var(--ink); color:var(--paper); border:none; padding:7px 14px; border-radius:2px;
+    cursor:pointer; font-family:'IBM Plex Mono', monospace; font-size:12px; font-weight:600;
+  }
+  .filters button:hover{background:var(--green-ink);}
+  .filters button.ghost{background:transparent; color:var(--rust); border:1px solid var(--rust);}
+
+  /* TABLE */
+  table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  thead th{
+    text-align:left; padding:8px 10px; border-bottom:2px solid var(--ink);
+    cursor:pointer; user-select:none; white-space:nowrap; color:var(--ink); position:sticky; top:0; background:var(--paper);
+  }
+  thead th:hover{color:var(--green-ink);}
+  tbody tr{border-bottom:1px solid var(--rule);}
+  tbody tr:nth-child(even){background:var(--paper-dim);}
+  tbody tr:hover{background:#dde3cc;}
+  tbody td{padding:7px 10px; vertical-align:top;}
+  td.amt{text-align:right; font-weight:600; white-space:nowrap;}
+  td.amt.pos{color:var(--green-ink);}
+  td.amt.neg{color:var(--rust);}
+  .table-scroll{max-height:480px; overflow:auto; border:1px solid var(--rule); border-radius:2px;}
+  .tag{font-size:10.5px; padding:2px 6px; border-radius:9px; background:var(--rule); color:var(--ink);}
+  td.edit input, td.edit select{
+    font-family:'IBM Plex Mono', monospace; font-size:12px; border:1px solid transparent;
+    background:transparent; color:var(--ink); padding:3px 4px; border-radius:2px; width:100%;
+  }
+  td.edit input:hover, td.edit select:hover{border-color:var(--rule);}
+  td.edit input:focus, td.edit select:focus{border-color:var(--gold); background:#fff; outline:none;}
+  td.edit input.amount-input{text-align:right; font-weight:600;}
+  td.edit input.name-input{min-width:170px;}
+  td.edit select.flow-select{min-width:100px;}
+  .del-btn{
+    background:none; border:none; color:var(--rust); cursor:pointer; font-size:15px; line-height:1;
+    padding:2px 5px; border-radius:2px;
+  }
+  .del-btn:hover{background:var(--rust); color:#fff;}
+  .dirty-flag{display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--gold); margin-left:6px; vertical-align:middle;}
+  .footer-sum{
+    display:flex; justify-content:space-between; gap:16px; padding:12px 4px 0; margin-top:6px;
+    font-size:12.5px; border-top:2px double var(--gold-soft); flex-wrap:wrap;
+  }
+  .footer-sum b{font-family:'Spectral', serif; font-size:15px;}
+  .empty-note{color:var(--ink-soft); font-style:italic; padding:30px 0; text-align:center;}
+  .small-note{font-size:11px; color:var(--ink-soft); margin-top:10px;}
+
+  /* ---------- MOBILE ---------- */
+  @media (max-width: 640px){
+    body{padding:16px 10px 60px;}
+    .ledger-header{flex-direction:column; align-items:stretch; gap:14px;}
+    .ledger-title{font-size:24px;}
+    .upload-box{flex-direction:column; align-items:stretch; text-align:center;}
+    .upload-box #uploadStatus{max-width:none;}
+    .io-row{flex-direction:column; align-items:stretch;}
+    .io-btn, label.io-btn{text-align:center;}
+    .stamp-row{grid-template-columns:1fr 1fr; gap:10px;}
+    .stamp{padding:14px 12px;}
+    .stamp-value{font-size:22px;}
+    .section{padding:16px 14px;}
+    .section-title{flex-direction:column; align-items:flex-start; gap:8px;}
+    .section-title > div{width:100%; display:flex; gap:8px;}
+    .section-title > div button, .section-title > div select{flex:1;}
+    .section-title > button{width:100%;}
+    .filters{flex-direction:column; align-items:stretch;}
+    .filters > div{flex-direction:column; align-items:stretch; width:100%;}
+    .filters .f{width:100%;}
+    .filters input[type=text], .filters input.amt, .filters select, .filters input[type=date], .filters input[type=number]{width:100%;}
+    .filters button{width:100%;}
+    table{font-size:11.5px;}
+    thead th{padding:6px 6px;}
+    tbody td{padding:6px 6px;}
+    td.edit input.name-input{min-width:110px;}
+    .table-scroll{max-height:360px;}
+    .footer-sum{flex-direction:column; gap:6px;}
+    canvas{max-height:220px;}
+  }
+</style>
+</head>
+<body>
+
+<div id="loginGate" style="position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:1000; padding:20px;">
+  <div style="background:var(--paper); border-radius:4px; padding:32px 30px; max-width:340px; width:100%; box-shadow:0 12px 30px rgba(0,0,0,0.4); text-align:center;">
+    <div style="font-family:'Spectral SC', serif; font-size:20px; color:var(--ink); margin-bottom:6px;">Libro Mastro</div>
+    <div style="font-family:'Spectral', serif; font-style:italic; color:var(--ink-soft); font-size:13px; margin-bottom:20px;">Accesso privato — inserisci il tuo codice</div>
+    <input type="password" id="loginPasscodeInput" placeholder="Codice d'accesso" autocomplete="current-password"
+      style="width:100%; padding:10px 12px; font-family:'IBM Plex Mono', monospace; font-size:14px; border:1px solid var(--rule); border-radius:2px; margin-bottom:10px; box-sizing:border-box;">
+    <button id="loginSubmitBtn" style="width:100%; background:var(--ink); color:var(--paper); border:none; padding:10px; border-radius:2px; font-family:'IBM Plex Mono', monospace; font-size:13px; font-weight:600; cursor:pointer;">Entra</button>
+    <div id="loginError" style="color:var(--rust); font-size:12px; margin-top:10px; min-height:16px;"></div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="ledger-header">
+    <div>
+      <div class="ledger-title">Libro Mastro</div>
+      <div class="ledger-sub">registro mensile delle transazioni — calcoli e verifica di cassa</div>
+    </div>
+    <div class="upload-box">
+      <label class="file-btn" for="fileInput">+ Carica export CSV</label>
+      <input type="file" id="fileInput" accept=".csv" multiple>
+      <span id="uploadStatus">Nessun file caricato ancora in questa sessione. I mesi già registrati restano salvati.</span>
+    </div>
+  </div>
+
+  <div class="io-row">
+    <button id="btnExportData" class="io-btn">⇩ Esporta tutti i dati (.json)</button>
+    <label class="io-btn file-btn-alt" for="importDataInput">⇧ Importa dati (.json)</label>
+    <input type="file" id="importDataInput" accept=".json" style="display:none;">
+    <span id="ioStatus" class="io-status"></span>
+  </div>
+
+  <div class="months-row" id="monthsRow"></div>
+
+  <div class="section">
+    <div class="section-title">
+      <span>Transazioni ricorrenti (stipendio, abbonamenti...)</span>
+      <div style="display:flex; gap:8px;">
+        <button id="btnDetectRecurring" class="io-btn-solid">Rileva non collegate</button>
+        <button id="btnGenRecurring" class="io-btn-solid">Genera transazioni mancanti</button>
+        <button id="btnAddRecurring" class="io-btn-solid">+ Aggiungi ricorrente</button>
+      </div>
+    </div>
+
+    <div id="detectedRecurringPanel" style="display:none; background:var(--paper-dim); border:1px dashed var(--rule); border-radius:3px; padding:12px 14px; margin-bottom:14px;">
+      <div class="small-note" style="margin:0 0 8px;">Transazioni che si ripetono nel registro ma non risultano collegate a nessuna ricorrenza qui sopra (es. inserite a mano prima di questa funzione, o importate da un vecchio backup):</div>
+      <div id="detectedRecurringList"></div>
+    </div>
+
+    <div id="recurringForm" style="display:none; background:var(--paper-dim); border:1px dashed var(--rule); border-radius:3px; padding:12px 14px; margin-bottom:14px;">
+      <div class="filters" style="margin-bottom:0;">
+        <div class="f"><label>Descrizione</label><input type="text" id="rName" placeholder="es. Stipendio"></div>
+        <div class="f"><label>Categoria</label><input type="text" id="rCategory" placeholder="es. Stipendio" list="categoryOptions"></div>
+        <div class="f"><label>Tipo</label>
+          <select id="rFlow">
+            <option value="income" selected>Entrata</option>
+            <option value="expense">Uscita</option>
+          </select>
+        </div>
+        <div class="f"><label>Importo</label><input type="number" step="0.01" class="amt" id="rAmount" placeholder="0.00"></div>
+        <div class="f"><label>Frequenza</label>
+          <select id="rFrequency">
+            <option value="monthly" selected>Mensile</option>
+            <option value="yearly">Annuale</option>
+          </select>
+        </div>
+        <div class="f"><label>Giorno del mese</label><input type="number" min="1" max="28" id="rDay" value="1" style="width:60px;"></div>
+        <div class="f" id="rMonthWrap" style="display:none;"><label>Mese (se annuale)</label>
+          <select id="rMonth">
+            <option value="1">Gennaio</option><option value="2">Febbraio</option><option value="3">Marzo</option>
+            <option value="4">Aprile</option><option value="5">Maggio</option><option value="6">Giugno</option>
+            <option value="7">Luglio</option><option value="8">Agosto</option><option value="9">Settembre</option>
+            <option value="10">Ottobre</option><option value="11">Novembre</option><option value="12">Dicembre</option>
+          </select>
+        </div>
+        <div class="f"><button id="btnSaveRecurring">Salva</button></div>
+        <div class="f"><button id="btnCancelRecurring" class="ghost">Annulla</button></div>
+        <div class="f" style="justify-content:center;"><span id="recurringFormError" style="color:var(--rust); font-size:11.5px;"></span></div>
+      </div>
+    </div>
+
+    <div class="table-scroll" style="max-height:260px;">
+      <table>
+        <thead>
+          <tr>
+            <th>Descrizione</th><th>Categoria</th><th>Tipo</th><th style="text-align:right;">Importo</th>
+            <th>Frequenza</th><th>Attiva</th><th style="width:30px;"></th>
+          </tr>
+        </thead>
+        <tbody id="recurringBody"></tbody>
+      </table>
+    </div>
+    <div class="small-note">Le ricorrenze restano salvate insieme al resto dei dati. Premi "Genera transazioni mancanti" per crearle nei mesi presenti nel registro (e nel mese corrente), oppure "Rileva non collegate" per trovare transazioni ripetute nel registro che non risultano ancora gestite come ricorrenza (utile se le hai inserite a mano in passato).</div>
+  </div>
+  <datalist id="categoryOptions"></datalist>
+
+  <div id="mainContent" style="display:none;">
+
+    <div class="stamp-row">
+      <div class="stamp"><div class="stamp-label">Entrate</div><div class="stamp-value pos" id="statIncome">—</div></div>
+      <div class="stamp"><div class="stamp-label">Uscite</div><div class="stamp-value neg" id="statExpense">—</div></div>
+      <div class="stamp"><div class="stamp-label">Investito</div><div class="stamp-value neutral" id="statInvest">—</div></div>
+      <div class="stamp balance"><div class="stamp-label">Saldo di cassa</div><div class="stamp-value" id="statBalance">—</div></div>
+    </div>
+
+    <div class="two-col">
+      <div class="section">
+        <div class="section-title">
+          <span>Uscite per categoria (MCC)</span>
+          <select id="catPeriodSelect" class="chart-period-select">
+            <option value="all">Tutto il periodo</option>
+            <option value="3">Ultimi 3 mesi</option>
+            <option value="6">Ultimi 6 mesi</option>
+            <option value="12">Ultimi 12 mesi</option>
+            <option value="ytd">Anno corrente</option>
+          </select>
+        </div>
+        <div id="catChartWrap">
+          <canvas id="catChart" height="220"></canvas>
+          <div class="small-note">Clicca una barra per escluderla (o includerla) dal registro qui sotto.</div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title">
+          <span>Andamento mensile</span>
+          <select id="trendPeriodSelect" class="chart-period-select">
+            <option value="all">Tutto il periodo</option>
+            <option value="3">Ultimi 3 mesi</option>
+            <option value="6">Ultimi 6 mesi</option>
+            <option value="12">Ultimi 12 mesi</option>
+            <option value="ytd">Anno corrente</option>
+          </select>
+        </div>
+        <div id="trendChartWrap">
+          <canvas id="trendChart" height="220"></canvas>
+          <div class="small-note">Clicca sulla legenda per mostrare/nascondere entrate, uscite o investito.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Registro transazioni — filtra, somma e modifica</div>
+      <div class="filters" style="justify-content:space-between;">
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
+          <div class="f"><label>Cerca</label><input type="text" id="fSearch" placeholder="esercente, descrizione..."></div>
+          <div class="f"><label>Tipo</label>
+            <select id="fFlow">
+              <option value="">Tutti</option>
+              <option value="income">Entrate</option>
+              <option value="expense">Uscite</option>
+              <option value="invest">Investimenti</option>
+            </select>
+          </div>
+          <div class="f"><label>Categoria</label><select id="fCategory"><option value="">Tutte</option></select></div>
+          <div class="f"><label>Dal</label><input type="date" id="fDateFrom"></div>
+          <div class="f"><label>Al</label><input type="date" id="fDateTo"></div>
+          <div class="f"><label>Importo min (assoluto)</label><input type="number" class="amt" id="fAmtMin" placeholder="0" min="0"></div>
+          <div class="f"><label>Importo max (assoluto)</label><input type="number" class="amt" id="fAmtMax" placeholder="+∞" min="0"></div>
+          <div class="f"><button id="btnToggleExclude" class="ghost">Escludi categorie ▾</button></div>
+          <div class="f"><button id="btnReset" class="ghost">Azzera filtri</button></div>
+        </div>
+        <div class="f"><button id="btnAddManual">+ Aggiungi entrata manuale</button></div>
+      </div>
+
+      <div id="excludeCatPanel" style="display:none; margin:-6px 0 14px;">
+        <div class="small-note" style="margin:0 0 6px;">Clicca una categoria per escluderla dal registro e dai totali qui sotto:</div>
+        <div class="months-row" id="excludeCatChips"></div>
+      </div>
+
+      <div id="manualForm" style="display:none; background:var(--paper-dim); border:1px dashed var(--rule); border-radius:3px; padding:12px 14px; margin-bottom:14px;">
+        <div class="filters" style="margin-bottom:0;">
+          <div class="f"><label>Data</label><input type="date" id="mDate"></div>
+          <div class="f"><label>Descrizione</label><input type="text" id="mName" placeholder="es. Stipendio"></div>
+          <div class="f"><label>Categoria</label><input type="text" id="mCategory" placeholder="es. Stipendio" list="categoryOptions"></div>
+          <div class="f"><label>Tipo</label>
+            <select id="mFlow">
+              <option value="income" selected>Entrata</option>
+              <option value="expense">Uscita</option>
+              <option value="invest">Investimento</option>
+            </select>
+          </div>
+          <div class="f"><label>Importo</label><input type="number" step="0.01" class="amt" id="mAmount" placeholder="0.00"></div>
+          <div class="f"><button id="btnSaveManual">Salva</button></div>
+          <div class="f"><button id="btnCancelManual" class="ghost">Annulla</button></div>
+          <div class="f" style="justify-content:center;"><span id="manualFormError" style="color:var(--rust); font-size:11.5px;"></span></div>
+        </div>
+      </div>
+
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:26px;"><input type="checkbox" id="checkAllHeader"></th>
+              <th data-key="date">Data ▾</th>
+              <th data-key="name">Esercente / Descrizione</th>
+              <th data-key="category_label">Categoria</th>
+              <th data-key="flow">Tipo</th>
+              <th data-key="amount" style="text-align:right;">Importo</th>
+              <th style="width:30px;"></th>
+            </tr>
+          </thead>
+          <tbody id="txnBody"></tbody>
+        </table>
+      </div>
+
+      <div class="footer-sum">
+        <div>Righe visibili: <b id="countVisible">0</b> — somma: <b id="sumVisible">€0,00</b></div>
+        <div>Selezionate: <b id="countSelected">0</b> — somma selezione: <b id="sumSelected">€0,00</b>
+          <button id="btnDeleteSelected" class="del-btn" style="border:1px solid var(--rust); margin-left:8px; font-size:11px; padding:3px 9px;" disabled>Elimina selezionate</button>
+        </div>
+      </div>
+      <div class="small-note">I dati caricati vengono salvati privatamente (solo per te) così puoi confrontare i mesi nel tempo. <span id="storageBackendNote"></span> <span id="resetAllWrap">— <a href="#" id="resetAllLink" style="color:var(--rust);">cancella tutti i dati salvati</a></span> <span>— <a href="#" id="logoutLink" style="color:var(--ink-soft);">esci</a></span></div>
+    </div>
+
+    <div class="section" id="savingsSection">
+      <div class="section-title">
+        <span>Andamento dei risparmi</span>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <select id="savingsPeriodSelect" class="chart-period-select">
+            <option value="all">Da sempre</option>
+            <option value="3">Ultimi 3 mesi</option>
+            <option value="6">Ultimi 6 mesi</option>
+            <option value="12">Ultimi 12 mesi</option>
+            <option value="ytd">Anno corrente</option>
+          </select>
+          <button id="btnToggleSavings" class="io-btn-solid">▸ Mostra</button>
+        </div>
+      </div>
+      <div id="savingsChartWrap" style="display:none;">
+        <canvas id="savingsChart" height="130"></canvas>
+        <div class="small-note">Clicca sulla legenda per confrontare solo una delle due serie.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="emptyState" class="empty-note">Carica il tuo primo export CSV per iniziare (il file che hai già caricato in chat è pronto: seleziona "Carica export CSV" e riseleziona quel file, oppure trascina qui i prossimi export mensili).</div>
+
+</div>
+
+<script>
+(function(){
+  const MCC_MAP = {
+    '5811':'Ristoranti','5812':'Ristoranti','5813':'Bar e locali','5814':'Fast food',
+    '5411':'Supermercati','5422':'Macellerie','5441':'Pasticcerie','5499':'Alimentari',
+    '5541':'Carburante','5542':'Carburante (self-service)','5511':'Concessionari auto',
+    '5691':'Abbigliamento','5699':'Abbigliamento','5941':'Articoli sportivi',
+    '5999':'Negozi vari','5732':'Elettronica','5712':'Arredamento','5713':'Tessuti/Pavimenti',
+    '4784':'Pedaggi','4789':'Trasporti','4829':'Trasferimento denaro','4899':'Servizi TV/Cavo',
+    '7011':'Hotel','4111':'Trasporto locale','5300':'Ingrosso','5912':'Farmacia',
+    '5651':'Abbigliamento famiglia','7832':'Cinema','7994':'Sale giochi','5993':'Tabaccheria'
+  };
+  const INCOME_TYPES = ['DIVIDEND','INTEREST_PAYMENT','BENEFITS_SAVEBACK','TRANSFER_INSTANT_INBOUND','TRANSFER_INBOUND','REFUND','CASHBACK'];
+  const INVEST_TYPES = ['BUY','SELL'];
+  const EXCLUDE_ON_IMPORT_TYPES = ['TRANSFER_INSTANT_INBOUND','TRANSFER_INBOUND']; // bonifici in entrata: inseriti a mano
+  const TYPE_LABELS = {
+    'DIVIDEND':'Dividendo','INTEREST_PAYMENT':'Interessi','BENEFITS_SAVEBACK':'Saveback',
+    'TRANSFER_INSTANT_INBOUND':'Bonifico ricevuto','TRANSFER_INBOUND':'Bonifico ricevuto',
+    'BUY':'Acquisto titoli/ETF','SELL':'Vendita titoli/ETF','CARD_TRANSACTION':'Pagamento carta',
+    'TRANSFER_OUTBOUND':'Bonifico inviato','TRANSFER_INSTANT_OUTBOUND':'Bonifico inviato',
+    'WITHDRAWAL':'Prelievo'
+  };
+
+  let all = [];               // all transactions across saved months
+  let recurringDefs = [];     // recurring definitions (stipendio, abbonamenti...)
+  let editingRecurringId = null;
+  let activeMonths = new Set();
+  let selected = new Set();   // transaction_id of selected rows
+  let sortKey = 'date', sortDir = -1;
+  let trendChart, catChart, savingsChart;
+  let savingsOpen = false;
+  let catPeriod = 'all', trendPeriod = 'all', savingsPeriod = 'all';
+  let excludedCategories = new Set();
+
+  const eur = n => (n<0?'-':'') + '€' + Math.abs(n).toLocaleString('it-IT',{minimumFractionDigits:2, maximumFractionDigits:2});
+
+  function classify(t){
+    const type = t.type;
+    let flow;
+    if(INVEST_TYPES.includes(type)) flow='invest';
+    else if(INCOME_TYPES.includes(type)) flow='income';
+    else if(type==='CARD_TRANSACTION' || type==='TRANSFER_OUTBOUND' || type==='TRANSFER_INSTANT_OUTBOUND' || type==='WITHDRAWAL') flow='expense';
+    else flow = (parseFloat(t.amount)>=0) ? 'income' : 'expense';
+
+    let category_label;
+    if(type==='CARD_TRANSACTION'){
+      category_label = MCC_MAP[t.mcc_code] || 'Altro';
+    } else {
+      category_label = TYPE_LABELS[type] || type;
+    }
+    return {flow, category_label};
+  }
+
+  function normalizeRow(r){
+    const amount = parseFloat(r.amount) || 0;
+    const {flow, category_label} = classify(r);
+    return {
+      transaction_id: r.transaction_id,
+      date: r.date,
+      month: (r.date||'').slice(0,7),
+      name: r.name || r.description || '(senza nome)',
+      description: r.description || '',
+      type: r.type,
+      category_label, flow,
+      amount,
+      counterparty: r.counterparty_name || ''
+    };
+  }
+
+  // --- Persistence layer -------------------------------------------------
+  // Storage online tramite Netlify Function + Netlify Blobs (sincronizzato
+  // su tutti i dispositivi). L'accesso richiede il codice personale inserito
+  // nella schermata iniziale. IndexedDB viene usato solo come cache locale
+  // per un caricamento più rapido e come fallback se la rete non risponde.
+  let idbPromise = null;
+  function openIdb(){
+    if(idbPromise) return idbPromise;
+    idbPromise = new Promise((resolve, reject)=>{
+      const req = indexedDB.open('libro_mastro_db', 1);
+      req.onupgradeneeded = ()=>{ req.result.createObjectStore('kv'); };
+      req.onsuccess = ()=>resolve(req.result);
+      req.onerror = ()=>reject(req.error);
+    });
+    return idbPromise;
+  }
+  async function idbGet(key){
+    const db = await openIdb();
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction('kv','readonly').objectStore('kv').get(key);
+      tx.onsuccess = ()=>resolve(tx.result===undefined ? null : {key, value:tx.result});
+      tx.onerror = ()=>reject(tx.error);
+    });
+  }
+  async function idbSet(key, value){
+    const db = await openIdb();
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction('kv','readwrite').objectStore('kv').put(value, key);
+      tx.onsuccess = ()=>resolve({key, value});
+      tx.onerror = ()=>reject(tx.error);
+    });
+  }
+  async function idbDelete(key){
+    const db = await openIdb();
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction('kv','readwrite').objectStore('kv').delete(key);
+      tx.onsuccess = ()=>resolve({key, deleted:true});
+      tx.onerror = ()=>reject(tx.error);
+    });
+  }
+  async function idbList(prefix){
+    const db = await openIdb();
+    return new Promise((resolve,reject)=>{
+      const keys = [];
+      const cursorReq = db.transaction('kv','readonly').objectStore('kv').openCursor();
+      cursorReq.onsuccess = ()=>{
+        const cursor = cursorReq.result;
+        if(cursor){
+          if(!prefix || String(cursor.key).startsWith(prefix)) keys.push(cursor.key);
+          cursor.continue();
+        } else resolve({keys});
+      };
+      cursorReq.onerror = ()=>reject(cursorReq.error);
+    });
+  }
+
+  let storageBackend = 'online'; // impostato definitivamente dopo il login
+
+  function passcodeHeaders(){
+    return { 'content-type':'application/json', 'x-app-passcode': (window.APP_PASSCODE || '') };
+  }
+
+  async function apiGet(key){
+    const res = await fetch('/api/storage?key=' + encodeURIComponent(key), { headers: passcodeHeaders() });
+    if(res.status===401) throw new Error('unauthorized');
+    if(!res.ok) throw new Error('network');
+    return await res.json();
+  }
+  async function apiSet(key, value){
+    const res = await fetch('/api/storage', { method:'POST', headers: passcodeHeaders(), body: JSON.stringify({key, value}) });
+    if(res.status===401) throw new Error('unauthorized');
+    if(!res.ok) throw new Error('network');
+    return await res.json();
+  }
+  async function apiDelete(key){
+    const res = await fetch('/api/storage?key=' + encodeURIComponent(key), { method:'DELETE', headers: passcodeHeaders() });
+    if(res.status===401) throw new Error('unauthorized');
+    if(!res.ok) throw new Error('network');
+    return await res.json();
+  }
+  async function apiList(prefix){
+    const res = await fetch('/api/storage?prefix=' + encodeURIComponent(prefix||''), { headers: passcodeHeaders() });
+    if(res.status===401) throw new Error('unauthorized');
+    if(!res.ok) throw new Error('network');
+    return await res.json();
+  }
+
+  // kvGet/kvSet/... provano prima il backend online; se la rete non
+  // risponde usano la cache locale (IndexedDB) così l'app resta usabile
+  // anche offline, e risincronizzano al prossimo salvataggio riuscito.
+  async function kvGet(key){
+    try{
+      const res = await apiGet(key);
+      if(res && res.value!==null && res.value!==undefined) await idbSet(key, res.value);
+      return res;
+    }catch(e){
+      if(e.message==='unauthorized') throw e;
+      return await idbGet(key).catch(()=>null);
+    }
+  }
+  async function kvSet(key, value){
+    await idbSet(key, value); // scrive subito la cache locale
+    return await apiSet(key, value); // poi sincronizza online (lancia errore se offline/non autorizzato)
+  }
+  async function kvDelete(key){
+    await idbDelete(key).catch(()=>{});
+    return await apiDelete(key);
+  }
+  async function kvList(prefix){
+    try{
+      return await apiList(prefix);
+    }catch(e){
+      if(e.message==='unauthorized') throw e;
+      return await idbList(prefix).catch(()=>({keys:[]}));
+    }
+  }
+
+  async function saveMonth(month, rows){
+    let existing = [];
+    try{
+      const res = await kvGet('month:'+month);
+      if(res && res.value) existing = JSON.parse(res.value);
+    }catch(e){ existing = []; }
+    const byId = new Map(existing.map(r=>[r.transaction_id, r]));
+    rows.forEach(r=>byId.set(r.transaction_id, r));
+    const merged = Array.from(byId.values());
+    await kvSet('month:'+month, JSON.stringify(merged));
+    return merged;
+  }
+
+  async function loadAllMonths(){
+    let keys = [];
+    try{
+      const res = await kvList('month:');
+      if(res && res.keys) keys = res.keys;
+    }catch(e){ keys = []; }
+    let acc = [];
+    for(const k of keys){
+      try{
+        const res = await kvGet(k);
+        if(res && res.value) acc = acc.concat(JSON.parse(res.value));
+      }catch(e){}
+    }
+    return acc;
+  }
+
+  async function loadRecurringDefs(){
+    let keys = [];
+    try{
+      const res = await kvList('recurring:');
+      if(res && res.keys) keys = res.keys;
+    }catch(e){ keys = []; }
+    let acc = [];
+    for(const k of keys){
+      try{
+        const res = await kvGet(k);
+        if(res && res.value) acc.push(JSON.parse(res.value));
+      }catch(e){}
+    }
+    return acc;
+  }
+
+  async function saveRecurringDef(def){
+    await kvSet('recurring:'+def.id, JSON.stringify(def));
+  }
+
+  async function deleteRecurringDef(id){
+    await kvDelete('recurring:'+id);
+  }
+
+  function monthsPresent(){
+    const s = new Set(all.map(t=>t.month));
+    return Array.from(s).sort();
+  }
+
+  function filterMonthsByPeriod(months, period){
+    if(!period || period==='all') return months;
+    if(period==='ytd'){
+      const y = String(new Date().getFullYear());
+      return months.filter(m=>m.startsWith(y));
+    }
+    const n = parseInt(period, 10);
+    if(!isNaN(n)) return months.slice(Math.max(0, months.length - n));
+    return months;
+  }
+
+  function renderMonthChips(){
+    const row = document.getElementById('monthsRow');
+    row.innerHTML = '';
+    const months = monthsPresent();
+    if(months.length===0) return;
+    const allChip = document.createElement('div');
+    allChip.className = 'chip' + (activeMonths.size===0 ? ' active' : '');
+    allChip.textContent = 'Tutti i mesi';
+    allChip.onclick = ()=>{ activeMonths.clear(); renderMonthChips(); renderAll(); };
+    row.appendChild(allChip);
+    months.forEach(m=>{
+      const chip = document.createElement('div');
+      chip.className = 'chip' + (activeMonths.has(m) ? ' active' : '');
+      chip.textContent = m;
+      chip.onclick = ()=>{
+        if(activeMonths.has(m)) activeMonths.delete(m); else activeMonths.add(m);
+        renderMonthChips(); renderAll();
+      };
+      row.appendChild(chip);
+    });
+  }
+
+  function populateCategoryFilter(){
+    const cats = Array.from(new Set(all.map(t=>t.category_label))).sort();
+    const sel = document.getElementById('fCategory');
+    const currentVal = sel.value;
+    sel.innerHTML = '<option value="">Tutte</option>' + cats.map(c=>`<option value="${c}">${c}</option>`).join('');
+    if(cats.includes(currentVal)) sel.value = currentVal;
+    const dl = document.getElementById('categoryOptions');
+    dl.innerHTML = cats.map(c=>`<option value="${escAttr(c)}">`).join('');
+
+    // keep only still-existing categories in the exclusion set
+    excludedCategories.forEach(c=>{ if(!cats.includes(c)) excludedCategories.delete(c); });
+    const chipsWrap = document.getElementById('excludeCatChips');
+    chipsWrap.innerHTML = cats.map(c=>{
+      const isExcluded = excludedCategories.has(c);
+      return `<div class="chip${isExcluded?' excluded':''}" data-cat="${escAttr(c)}">${c}${isExcluded?' ✕':''}</div>`;
+    }).join('') || '<div class="chip empty">Nessuna categoria disponibile</div>';
+    chipsWrap.querySelectorAll('.chip[data-cat]').forEach(chip=>{
+      chip.addEventListener('click', ()=>{
+        const c = chip.dataset.cat;
+        if(excludedCategories.has(c)) excludedCategories.delete(c); else excludedCategories.add(c);
+        populateCategoryFilter();
+        renderTable();
+      });
+    });
+  }
+
+  function getFiltered(){
+    const search = document.getElementById('fSearch').value.trim().toLowerCase();
+    const flow = document.getElementById('fFlow').value;
+    const cat = document.getElementById('fCategory').value;
+    const dFrom = document.getElementById('fDateFrom').value;
+    const dTo = document.getElementById('fDateTo').value;
+    const amtMin = parseFloat(document.getElementById('fAmtMin').value);
+    const amtMax = parseFloat(document.getElementById('fAmtMax').value);
+
+    return all.filter(t=>{
+      if(activeMonths.size>0 && !activeMonths.has(t.month)) return false;
+      if(excludedCategories.has(t.category_label)) return false;
+      if(search && !(t.name.toLowerCase().includes(search) || t.description.toLowerCase().includes(search) || t.counterparty.toLowerCase().includes(search))) return false;
+      if(flow && t.flow!==flow) return false;
+      if(cat && t.category_label!==cat) return false;
+      if(dFrom && t.date < dFrom) return false;
+      if(dTo && t.date > dTo) return false;
+      const absAmt = Math.abs(t.amount);
+      if(!isNaN(amtMin) && absAmt < amtMin) return false;
+      if(!isNaN(amtMax) && absAmt > amtMax) return false;
+      return true;
+    });
+  }
+
+  function renderStats(){
+    const scope = activeMonths.size>0 ? all.filter(t=>activeMonths.has(t.month)) : all;
+    const income = scope.filter(t=>t.flow==='income').reduce((s,t)=>s+t.amount,0);
+    const expense = scope.filter(t=>t.flow==='expense').reduce((s,t)=>s+t.amount,0);
+    const invest = scope.filter(t=>t.flow==='invest').reduce((s,t)=>s+t.amount,0);
+    const balance = scope.reduce((s,t)=>s+t.amount,0);
+    document.getElementById('statIncome').textContent = eur(income);
+    document.getElementById('statExpense').textContent = eur(expense);
+    document.getElementById('statInvest').textContent = eur(invest);
+    document.getElementById('statBalance').textContent = eur(balance);
+  }
+
+  function renderCatChart(){
+    const allowedMonths = new Set(filterMonthsByPeriod(monthsPresent(), catPeriod));
+    const scope = all.filter(t=>{
+      if(activeMonths.size>0 && !activeMonths.has(t.month)) return false;
+      return allowedMonths.has(t.month);
+    });
+    const expenses = scope.filter(t=>t.flow==='expense');
+    const byCat = {};
+    expenses.forEach(t=>{ byCat[t.category_label] = (byCat[t.category_label]||0) + Math.abs(t.amount); });
+    const entries = Object.entries(byCat).sort((a,b)=>b[1]-a[1]).slice(0,10);
+    const canvasEl = document.getElementById('catChart');
+    if(typeof Chart === 'undefined'){
+      document.getElementById('catChartWrap').innerHTML = '<div class="small-note">Grafico non disponibile (libreria non caricata). I totali nel registro funzionano comunque.</div>';
+      return;
+    }
+    if(entries.length===0){
+      document.getElementById('catChartWrap').innerHTML = '<canvas id="catChart" height="220"></canvas><div class="small-note">Nessuna uscita nel periodo selezionato.</div>';
+      return;
+    }
+    if(catChart) catChart.destroy();
+    const colors = entries.map(e => excludedCategories.has(e[0]) ? '#c7cdb4' : '#a34a30');
+    catChart = new Chart(canvasEl, {
+      type:'bar',
+      data:{
+        labels: entries.map(e=>e[0]),
+        datasets:[{ data: entries.map(e=>e[1]), backgroundColor: colors, borderRadius:2 }]
+      },
+      options:{
+        indexAxis:'y', plugins:{legend:{display:false}},
+        onClick: (evt, els)=>{
+          if(!els.length) return;
+          const label = entries[els[0].index][0];
+          if(excludedCategories.has(label)) excludedCategories.delete(label); else excludedCategories.add(label);
+          populateCategoryFilter();
+          renderTable();
+          renderCatChart();
+        },
+        onHover: (evt, els)=>{ evt.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
+        scales:{ x:{ticks:{color:'#52604c', font:{family:"'IBM Plex Mono'"}}, grid:{color:'#e3e7d6'}},
+                 y:{ticks:{color:'#22301f', font:{family:"'IBM Plex Mono'", size:11}}, grid:{display:false}} }
+      }
+    });
+  }
+
+  function renderSavingsChart(){
+    if(!savingsOpen) return; // non renderizzare mentre è chiuso (canvas nascosto)
+    if(typeof Chart === 'undefined'){
+      document.getElementById('savingsChartWrap').innerHTML = '<div class="small-note">Grafico non disponibile (libreria non caricata). I totali nel registro funzionano comunque.</div>';
+      return;
+    }
+    const months = monthsPresent();
+    if(months.length===0){
+      document.getElementById('savingsChartWrap').innerHTML = '<canvas id="savingsChart" height="130"></canvas><div class="small-note">Carica o inserisci qualche transazione per vedere l\'andamento dei risparmi.</div>';
+      return;
+    }
+    let runningSavings = 0, runningWealth = 0;
+    const savingsSeries = [], wealthSeries = [];
+    months.forEach(m=>{
+      const monthRows = all.filter(t=>t.month===m);
+      const income = monthRows.filter(t=>t.flow==='income').reduce((s,t)=>s+t.amount,0);
+      const expense = monthRows.filter(t=>t.flow==='expense').reduce((s,t)=>s+t.amount,0);
+      const netCash = monthRows.reduce((s,t)=>s+t.amount,0); // include invest: whole balance movement
+      runningSavings += (income + expense); // expense already negative
+      runningWealth += netCash;
+      savingsSeries.push(Math.round(runningSavings*100)/100);
+      wealthSeries.push(Math.round(runningWealth*100)/100);
+    });
+    // la cumulata resta calcolata su tutta la storia; il periodo selezionato
+    // sceglie solo quale finestra temporale mostrare sull'asse
+    const shownMonths = filterMonthsByPeriod(months, savingsPeriod);
+    const startIdx = months.indexOf(shownMonths[0]);
+    const labels = months.slice(startIdx);
+    const savingsShown = savingsSeries.slice(startIdx);
+    const wealthShown = wealthSeries.slice(startIdx);
+    const canvasEl = document.getElementById('savingsChart');
+    if(savingsChart) savingsChart.destroy();
+    savingsChart = new Chart(canvasEl, {
+      type:'line',
+      data:{
+        labels: labels,
+        datasets:[
+          {label:'Risparmio cumulato (entrate - uscite)', data: savingsShown, borderColor:'#2f5c3f', backgroundColor:'rgba(47,92,63,0.12)', tension:0.25, fill:true},
+          {label:'Patrimonio cumulato (incl. investimenti)', data: wealthShown, borderColor:'#b8862c', backgroundColor:'rgba(184,134,44,0.08)', tension:0.25, fill:true, borderDash:[5,3]}
+        ]
+      },
+      options:{
+        plugins:{legend:{labels:{color:'#22301f', font:{family:"'IBM Plex Mono'", size:11}}}},
+        scales:{ x:{ticks:{color:'#52604c'}, grid:{display:false}},
+                 y:{ticks:{color:'#52604c'}, grid:{color:'#e3e7d6'}} }
+      }
+    });
+  }
+
+  function renderTrendChart(){
+    if(typeof Chart === 'undefined'){
+      document.getElementById('trendChartWrap').innerHTML = '<div class="small-note">Grafico non disponibile (libreria non caricata). Il registro e i totali funzionano comunque normalmente.</div>';
+      return;
+    }
+    const months = filterMonthsByPeriod(monthsPresent(), trendPeriod);
+    const wrap = document.getElementById('trendChartWrap');
+    if(months.length<2){
+      wrap.innerHTML = '<canvas id="trendChart" height="220"></canvas><div class="small-note">Servono almeno due mesi nel periodo selezionato per un confronto.</div>';
+      return;
+    }
+    const inc = months.map(m=>all.filter(t=>t.month===m && t.flow==='income').reduce((s,t)=>s+t.amount,0));
+    const exp = months.map(m=>Math.abs(all.filter(t=>t.month===m && t.flow==='expense').reduce((s,t)=>s+t.amount,0)));
+    const inv = months.map(m=>Math.abs(all.filter(t=>t.month===m && t.flow==='invest').reduce((s,t)=>s+t.amount,0)));
+    const ctx = document.getElementById('trendChart');
+    if(trendChart) trendChart.destroy();
+    trendChart = new Chart(ctx, {
+      type:'bar',
+      data:{
+        labels: months,
+        datasets:[
+          {label:'Entrate', data:inc, backgroundColor:'#2f5c3f'},
+          {label:'Uscite', data:exp, backgroundColor:'#a34a30'},
+          {label:'Investito', data:inv, backgroundColor:'#b8862c'}
+        ]
+      },
+      options:{
+        plugins:{legend:{labels:{color:'#22301f', font:{family:"'IBM Plex Mono'", size:11}}}},
+        scales:{ x:{ticks:{color:'#52604c'}, grid:{display:false}},
+                 y:{ticks:{color:'#52604c'}, grid:{color:'#e3e7d6'}} }
+      }
+    });
+  }
+
+  function escAttr(s){ return String(s).replace(/"/g,'&quot;'); }
+
+  function renderTable(){
+    const rows = getFiltered();
+    rows.sort((a,b)=>{
+      let av=a[sortKey], bv=b[sortKey];
+      if(sortKey==='amount'){ av=a.amount; bv=b.amount; }
+      if(av<bv) return -1*sortDir; if(av>bv) return 1*sortDir; return 0;
+    });
+    const body = document.getElementById('txnBody');
+    body.innerHTML = rows.map(t=>{
+      const amtClass = t.amount>=0?'pos':'neg';
+      const checked = selected.has(t.transaction_id) ? 'checked' : '';
+      const id = escAttr(t.transaction_id);
+      return `<tr data-id="${id}">
+        <td><input type="checkbox" class="rowCheck" data-id="${id}" ${checked}></td>
+        <td class="edit"><input type="date" class="date-input" data-id="${id}" data-field="date" value="${t.date}"></td>
+        <td class="edit"><input type="text" class="name-input" data-id="${id}" data-field="name" value="${escAttr(t.name)}"></td>
+        <td class="edit"><input type="text" class="cat-input" data-id="${id}" data-field="category_label" value="${escAttr(t.category_label)}" list="categoryOptions"></td>
+        <td class="edit">
+          <select class="flow-select" data-id="${id}" data-field="flow">
+            <option value="income" ${t.flow==='income'?'selected':''}>Entrata</option>
+            <option value="expense" ${t.flow==='expense'?'selected':''}>Uscita</option>
+            <option value="invest" ${t.flow==='invest'?'selected':''}>Investimento</option>
+          </select>
+        </td>
+        <td class="edit"><input type="number" step="0.01" class="amount-input amt ${amtClass}" data-id="${id}" data-field="amount" value="${t.amount}"></td>
+        <td><button class="del-btn" data-id="${id}" title="Elimina riga">✕</button></td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="7" class="empty-note">Nessuna transazione corrisponde ai filtri.</td></tr>';
+
+    document.querySelectorAll('.rowCheck').forEach(cb=>{
+      cb.onchange = ()=>{
+        if(cb.checked) selected.add(cb.dataset.id); else selected.delete(cb.dataset.id);
+        renderFooterSums();
+      };
+    });
+    document.querySelectorAll('td.edit input, td.edit select').forEach(inp=>{
+      inp.addEventListener('change', onCellEdit);
+    });
+    document.querySelectorAll('.del-btn').forEach(btn=>{
+      btn.addEventListener('click', onDeleteRow);
+    });
+
+    document.getElementById('countVisible').textContent = rows.length;
+    document.getElementById('sumVisible').textContent = eur(rows.reduce((s,t)=>s+t.amount,0));
+    renderFooterSums();
+  }
+
+  async function persistAll(oldMonths){
+    const grouped = {};
+    all.forEach(t=> (grouped[t.month]=grouped[t.month]||[]).push(t));
+    const newMonths = new Set(Object.keys(grouped));
+    for(const m of newMonths){
+      await kvSet('month:'+m, JSON.stringify(grouped[m]));
+    }
+    for(const m of oldMonths){
+      if(!newMonths.has(m)){ try{ await kvDelete('month:'+m); }catch(e){} }
+    }
+  }
+
+  async function onCellEdit(e){
+    const el = e.target;
+    const id = el.dataset.id;
+    const field = el.dataset.field;
+    const t = all.find(x=>x.transaction_id===id);
+    if(!t) return;
+    const oldMonths = monthsPresent();
+    if(field==='amount') t.amount = parseFloat(el.value)||0;
+    else if(field==='date'){ t.date = el.value; t.month = (el.value||'').slice(0,7); }
+    else t[field] = el.value;
+    await persistAll(oldMonths);
+    renderMonthChips();
+    renderStats();
+    renderCatChart();
+    renderTrendChart();
+    renderSavingsChart();
+    populateCategoryFilter();
+    renderTable();
+  }
+
+  function onDeleteRow(e){
+    const btn = e.currentTarget;
+    const id = btn.dataset.id;
+    if(btn.dataset.confirm === '1'){
+      clearTimeout(btn._resetTimer);
+      doDeleteRow(id);
+      return;
+    }
+    btn.dataset.confirm = '1';
+    btn.textContent = '✓';
+    btn.title = 'Clicca di nuovo per confermare l\'eliminazione';
+    btn.style.background = 'var(--rust)';
+    btn.style.color = '#fff';
+    btn._resetTimer = setTimeout(()=>{
+      btn.dataset.confirm = '0';
+      btn.textContent = '✕';
+      btn.title = 'Elimina riga';
+      btn.style.background = '';
+      btn.style.color = '';
+    }, 3000);
+  }
+
+  async function doDeleteRow(id){
+    const oldMonths = monthsPresent();
+    all = all.filter(t=>t.transaction_id!==id);
+    selected.delete(id);
+    await persistAll(oldMonths);
+    renderMonthChips();
+    renderAll();
+  }
+
+  function renderFooterSums(){
+    const selRows = all.filter(t=>selected.has(t.transaction_id));
+    document.getElementById('countSelected').textContent = selRows.length;
+    document.getElementById('sumSelected').textContent = eur(selRows.reduce((s,t)=>s+t.amount,0));
+    const btn = document.getElementById('btnDeleteSelected');
+    btn.disabled = selRows.length===0;
+    btn.style.opacity = selRows.length===0 ? 0.4 : 1;
+  }
+
+  function renderAll(){
+    renderRecurringTable();
+    if(all.length===0){
+      document.getElementById('mainContent').style.display = 'none';
+      document.getElementById('emptyState').style.display = 'block';
+      return;
+    }
+    document.getElementById('mainContent').style.display = 'block';
+    document.getElementById('emptyState').style.display = 'none';
+    renderStats();
+    renderCatChart();
+    renderTrendChart();
+    renderSavingsChart();
+    populateCategoryFilter();
+    renderTable();
+  }
+
+  const MONTH_NAMES_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+
+  function renderRecurringTable(){
+    const body = document.getElementById('recurringBody');
+    if(!body) return;
+    body.innerHTML = recurringDefs.map(d=>{
+      const amtClass = d.flow==='income' ? 'pos' : 'neg';
+      const shownAmount = d.flow==='income' ? Math.abs(d.amount) : -Math.abs(d.amount);
+      const freqLabel = d.frequency==='yearly'
+        ? ('Annuale — ' + (MONTH_NAMES_IT[(parseInt(d.month)||1)-1]) + ', gg ' + d.day)
+        : ('Mensile — gg ' + d.day);
+      const id = escAttr(d.id);
+      return `<tr data-id="${id}">
+        <td class="rec-edit-trigger" style="cursor:pointer;">${d.name}</td>
+        <td class="rec-edit-trigger" style="cursor:pointer;"><span class="tag">${d.category_label}</span></td>
+        <td class="rec-edit-trigger" style="cursor:pointer;">${d.flow==='income'?'Entrata':'Uscita'}</td>
+        <td class="amt ${amtClass} rec-edit-trigger" style="cursor:pointer;">${eur(shownAmount)}</td>
+        <td class="rec-edit-trigger" style="cursor:pointer;">${freqLabel}</td>
+        <td><input type="checkbox" class="recurringActive" data-id="${id}" ${d.active?'checked':''}></td>
+        <td><button class="del-btn recurring-del" data-id="${id}">✕</button></td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="7" class="empty-note">Nessuna ricorrenza impostata. Aggiungi lo stipendio o un abbonamento con "+ Aggiungi ricorrente".</td></tr>';
+
+    body.querySelectorAll('.rec-edit-trigger').forEach(cell=>{
+      cell.addEventListener('click', ()=>{
+        const id = cell.parentElement.dataset.id;
+        openRecurringForm(id);
+      });
+    });
+    body.querySelectorAll('.recurringActive').forEach(cb=>{
+      cb.addEventListener('change', async ()=>{
+        const d = recurringDefs.find(x=>x.id===cb.dataset.id);
+        if(!d) return;
+        d.active = cb.checked;
+        await saveRecurringDef(d);
+      });
+    });
+    body.querySelectorAll('.recurring-del').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        const b = e.currentTarget;
+        if(b.dataset.confirm==='1'){
+          clearTimeout(b._resetTimer);
+          doDeleteRecurring(b.dataset.id);
+          return;
+        }
+        b.dataset.confirm = '1';
+        b.textContent = '✓';
+        b.style.background = 'var(--rust)';
+        b.style.color = '#fff';
+        b._resetTimer = setTimeout(()=>{
+          b.dataset.confirm = '0';
+          b.textContent = '✕';
+          b.style.background = '';
+          b.style.color = '';
+        }, 3000);
+      });
+    });
+  }
+
+  async function doDeleteRecurring(id){
+    recurringDefs = recurringDefs.filter(d=>d.id!==id);
+    await deleteRecurringDef(id);
+    // rimuove anche le transazioni già generate da questa ricorrenza, per evitare doppioni orfani
+    const prefix = 'recurring-' + id + '-';
+    const hadLinked = all.some(t=>t.transaction_id.startsWith(prefix));
+    if(hadLinked){
+      const oldMonths = monthsPresent();
+      all = all.filter(t=>!t.transaction_id.startsWith(prefix));
+      await persistAll(oldMonths);
+      renderMonthChips();
+      renderAll();
+    } else {
+      renderRecurringTable();
+    }
+  }
+
+  function openRecurringForm(id){
+    const form = document.getElementById('recurringForm');
+    editingRecurringId = id || null;
+    const d = id ? recurringDefs.find(x=>x.id===id) : null;
+    document.getElementById('rName').value = d ? d.name : '';
+    document.getElementById('rCategory').value = d ? d.category_label : '';
+    document.getElementById('rFlow').value = d ? d.flow : 'income';
+    document.getElementById('rAmount').value = d ? Math.abs(d.amount) : '';
+    document.getElementById('rFrequency').value = d ? d.frequency : 'monthly';
+    document.getElementById('rDay').value = d ? d.day : 1;
+    document.getElementById('rMonth').value = d ? (d.month||1) : 1;
+    document.getElementById('rMonthWrap').style.display = (d && d.frequency==='yearly') ? 'flex' : 'none';
+    document.getElementById('recurringFormError').textContent = '';
+    form.style.display = 'block';
+  }
+
+  function openRecurringFormWithSeed(seed){
+    editingRecurringId = null;
+    document.getElementById('recurringForm').style.display = 'block';
+    document.getElementById('rName').value = seed.name || '';
+    document.getElementById('rCategory').value = seed.category_label || '';
+    document.getElementById('rFlow').value = seed.flow || 'income';
+    document.getElementById('rAmount').value = seed.amount || '';
+    document.getElementById('rFrequency').value = 'monthly';
+    document.getElementById('rDay').value = seed.day || 1;
+    document.getElementById('rMonth').value = 1;
+    document.getElementById('rMonthWrap').style.display = 'none';
+    document.getElementById('recurringFormError').textContent = '';
+    document.getElementById('recurringForm').scrollIntoView({behavior:'smooth', block:'center'});
+  }
+
+  function pad2(n){ return String(n).padStart(2,'0'); }
+
+  function detectUnlinkedRecurring(){
+    const definedKeys = new Set(recurringDefs.map(d=>(d.name.trim().toLowerCase()+'|'+d.category_label.trim().toLowerCase()+'|'+d.flow)));
+    const groups = {};
+    all.forEach(t=>{
+      if(t.transaction_id.startsWith('recurring-')) return; // già collegata a una ricorrenza
+      if(t.flow==='invest') return; // gli investimenti non sono trattati come ricorrenze qui
+      const key = t.name.trim().toLowerCase()+'|'+t.category_label.trim().toLowerCase()+'|'+t.flow;
+      if(!groups[key]) groups[key] = { name:t.name, category_label:t.category_label, flow:t.flow, rows:[] };
+      groups[key].rows.push(t);
+    });
+    const candidates = [];
+    Object.values(groups).forEach(g=>{
+      const months = new Set(g.rows.map(r=>r.month));
+      if(months.size < 2) return; // ricorre in almeno 2 mesi diversi
+      const key = g.name.trim().toLowerCase()+'|'+g.category_label.trim().toLowerCase()+'|'+g.flow;
+      if(definedKeys.has(key)) return; // già gestita da una ricorrenza esistente
+      const sorted = g.rows.slice().sort((a,b)=> a.date < b.date ? -1 : 1);
+      const last = sorted[sorted.length-1];
+      const avgAmount = g.rows.reduce((s,r)=>s+Math.abs(r.amount),0) / g.rows.length;
+      candidates.push({
+        name: g.name, category_label: g.category_label, flow: g.flow,
+        count: months.size, amount: Math.round(avgAmount*100)/100,
+        day: parseInt(last.date.split('-')[2],10) || 1
+      });
+    });
+    candidates.sort((a,b)=>b.count-a.count);
+    return candidates;
+  }
+
+  function renderDetectedRecurring(){
+    const candidates = detectUnlinkedRecurring();
+    const list = document.getElementById('detectedRecurringList');
+    if(candidates.length===0){
+      list.innerHTML = '<div class="small-note" style="margin:0;">Nessuna transazione ricorrente "orfana" trovata: sono tutte già collegate a una ricorrenza, oppure non c\'è ancora abbastanza storico.</div>';
+      return;
+    }
+    list.innerHTML = candidates.map((c,i)=>{
+      const amtLabel = eur(c.flow==='income' ? c.amount : -c.amount);
+      return `<div class="detected-row">
+        <div class="di-main">
+          <span><b>${c.name}</b> — <span class="tag">${c.category_label}</span></span>
+          <span class="di-meta">comparsa in ${c.count} mesi diversi · ultimo importo medio ${amtLabel}</span>
+        </div>
+        <button class="io-btn-solid detect-add-btn" data-idx="${i}">+ Rendi ricorrente</button>
+      </div>`;
+    }).join('');
+    list.querySelectorAll('.detect-add-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const c = candidates[parseInt(btn.dataset.idx,10)];
+        openRecurringFormWithSeed(c);
+      });
+    });
+  }
+
+  function monthsToGenerateFor(){
+    const s = new Set(monthsPresent());
+    s.add(new Date().toISOString().slice(0,7));
+    return Array.from(s).sort();
+  }
+
+  async function generateRecurringTransactions(){
+    const months = monthsToGenerateFor();
+    const oldMonths = monthsPresent();
+    const existingIds = new Set(all.map(t=>t.transaction_id));
+    let addedCount = 0;
+    recurringDefs.filter(d=>d.active).forEach(d=>{
+      months.forEach(m=>{
+        const mo = parseInt(m.split('-')[1], 10);
+        if(d.frequency==='yearly' && parseInt(d.month,10)!==mo) return;
+        const day = Math.min(Math.max(parseInt(d.day,10)||1, 1), 28);
+        const date = m + '-' + pad2(day);
+        const txnId = 'recurring-' + d.id + '-' + m;
+        if(existingIds.has(txnId)) return;
+        const amount = d.flow==='income' ? Math.abs(d.amount) : -Math.abs(d.amount);
+        all.push({
+          transaction_id: txnId, date, month: m, name: d.name, description: 'Ricorrente',
+          type: 'RECURRING', category_label: d.category_label, flow: d.flow, amount, counterparty: ''
+        });
+        existingIds.add(txnId);
+        addedCount++;
+      });
+    });
+    const status = document.getElementById('ioStatus');
+    if(addedCount>0){
+      await persistAll(oldMonths);
+      renderMonthChips();
+      renderAll();
+      status.textContent = addedCount + ' transazioni ricorrenti generate.';
+    } else {
+      status.textContent = 'Nessuna nuova transazione ricorrente da generare.';
+    }
+  }
+
+  document.getElementById('rFrequency').addEventListener('change', (e)=>{
+    document.getElementById('rMonthWrap').style.display = e.target.value==='yearly' ? 'flex' : 'none';
+  });
+  document.getElementById('btnAddRecurring').onclick = ()=>{
+    const form = document.getElementById('recurringForm');
+    if(form.style.display==='block' && editingRecurringId===null){
+      form.style.display = 'none';
+    } else {
+      openRecurringForm(null);
+      document.getElementById('rName').focus();
+    }
+  };
+  document.getElementById('btnCancelRecurring').onclick = ()=>{
+    document.getElementById('recurringForm').style.display = 'none';
+    document.getElementById('recurringFormError').textContent = '';
+    editingRecurringId = null;
+  };
+  document.getElementById('btnSaveRecurring').onclick = async ()=>{
+    const name = document.getElementById('rName').value.trim();
+    const category_label = document.getElementById('rCategory').value.trim() || 'Manuale';
+    const flow = document.getElementById('rFlow').value;
+    const amount = parseFloat(document.getElementById('rAmount').value);
+    const frequency = document.getElementById('rFrequency').value;
+    const day = parseInt(document.getElementById('rDay').value, 10) || 1;
+    const month = parseInt(document.getElementById('rMonth').value, 10) || 1;
+    if(!name || isNaN(amount) || amount===0){
+      document.getElementById('recurringFormError').textContent = 'Compila almeno descrizione e importo.';
+      return;
+    }
+    const id = editingRecurringId || ('rec-' + Date.now() + '-' + Math.random().toString(36).slice(2,8));
+    const existing = editingRecurringId ? recurringDefs.find(d=>d.id===editingRecurringId) : null;
+    const def = {
+      id, name, category_label, flow, amount: Math.abs(amount), frequency, day, month,
+      active: existing ? existing.active : true
+    };
+    await saveRecurringDef(def);
+    if(existing) Object.assign(existing, def);
+    else recurringDefs.push(def);
+    editingRecurringId = null;
+    document.getElementById('recurringForm').style.display = 'none';
+    document.getElementById('recurringFormError').textContent = '';
+    renderRecurringTable();
+    if(document.getElementById('detectedRecurringPanel').style.display==='block') renderDetectedRecurring();
+  };
+  document.getElementById('btnGenRecurring').addEventListener('click', generateRecurringTransactions);
+  document.getElementById('btnDetectRecurring').addEventListener('click', ()=>{
+    const panel = document.getElementById('detectedRecurringPanel');
+    const opening = panel.style.display === 'none';
+    panel.style.display = opening ? 'block' : 'none';
+    if(opening) renderDetectedRecurring();
+  });
+
+  document.getElementById('btnAddManual').onclick = ()=>{
+    const form = document.getElementById('manualForm');
+    form.style.display = form.style.display==='none' ? 'block' : 'none';
+    document.getElementById('manualFormError').textContent = '';
+    if(form.style.display==='block'){
+      document.getElementById('mDate').value = new Date().toISOString().slice(0,10);
+      document.getElementById('mName').focus();
+    }
+  };
+  document.getElementById('btnCancelManual').onclick = ()=>{
+    document.getElementById('manualForm').style.display = 'none';
+    document.getElementById('manualFormError').textContent = '';
+  };
+  document.getElementById('btnSaveManual').onclick = async ()=>{
+    const date = document.getElementById('mDate').value;
+    const name = document.getElementById('mName').value.trim();
+    const category_label = document.getElementById('mCategory').value.trim() || 'Manuale';
+    const flow = document.getElementById('mFlow').value;
+    let amount = parseFloat(document.getElementById('mAmount').value);
+    if(!date || !name || isNaN(amount)){
+      document.getElementById('manualFormError').textContent = 'Compila almeno data, descrizione e importo.';
+      return;
+    }
+    document.getElementById('manualFormError').textContent = '';
+    if(flow!=='invest'){
+      amount = flow==='income' ? Math.abs(amount) : -Math.abs(amount);
+    }
+    const oldMonths = monthsPresent();
+    const t = {
+      transaction_id: 'manual-' + Date.now() + '-' + Math.random().toString(36).slice(2,8),
+      date, month: date.slice(0,7), name, description:'', type:'MANUAL',
+      category_label, flow, amount, counterparty:''
+    };
+    all.push(t);
+    await persistAll(oldMonths);
+    document.getElementById('mName').value = '';
+    document.getElementById('mCategory').value = '';
+    document.getElementById('mAmount').value = '';
+    document.getElementById('manualForm').style.display = 'none';
+    renderMonthChips();
+    renderAll();
+  };
+
+  // --- events ---
+  document.getElementById('fileInput').addEventListener('change', async (e)=>{
+    const files = Array.from(e.target.files);
+    if(files.length===0) return;
+    document.getElementById('uploadStatus').textContent = 'Lettura di ' + files.length + ' file...';
+    let totalRows = 0;
+    for(const file of files){
+      const text = await file.text();
+      const parsed = Papa.parse(text, {header:true, skipEmptyLines:true});
+      const rows = parsed.data.map(normalizeRow).filter(r=>r.transaction_id && !EXCLUDE_ON_IMPORT_TYPES.includes(r.type));
+      const byMonth = {};
+      rows.forEach(r=>{ (byMonth[r.month] = byMonth[r.month]||[]).push(r); });
+      for(const m in byMonth){
+        await saveMonth(m, byMonth[m]);
+      }
+      totalRows += rows.length;
+    }
+    all = await loadAllMonths();
+    document.getElementById('uploadStatus').textContent = totalRows + ' righe importate (bonifici in entrata esclusi). Totale storico: ' + all.length + ' transazioni.';
+    renderMonthChips();
+    renderAll();
+    if(recurringDefs.some(d=>d.active)) await generateRecurringTransactions();
+  });
+
+  ['fSearch','fFlow','fCategory','fDateFrom','fDateTo','fAmtMin','fAmtMax'].forEach(id=>{
+    document.getElementById(id).addEventListener('input', renderTable);
+  });
+  document.getElementById('btnReset').onclick = ()=>{
+    document.getElementById('fSearch').value='';
+    document.getElementById('fFlow').value='';
+    document.getElementById('fCategory').value='';
+    document.getElementById('fDateFrom').value='';
+    document.getElementById('fDateTo').value='';
+    document.getElementById('fAmtMin').value='';
+    document.getElementById('fAmtMax').value='';
+    excludedCategories.clear();
+    populateCategoryFilter();
+    renderTable();
+  };
+  document.getElementById('btnToggleExclude').onclick = ()=>{
+    const panel = document.getElementById('excludeCatPanel');
+    panel.style.display = panel.style.display==='none' ? 'block' : 'none';
+  };
+  document.getElementById('btnToggleSavings').onclick = (e)=>{
+    savingsOpen = !savingsOpen;
+    document.getElementById('savingsChartWrap').style.display = savingsOpen ? 'block' : 'none';
+    e.target.textContent = savingsOpen ? '▾ Nascondi' : '▸ Mostra';
+    if(savingsOpen) renderSavingsChart();
+  };
+  document.getElementById('catPeriodSelect').addEventListener('change', (e)=>{
+    catPeriod = e.target.value;
+    renderCatChart();
+  });
+  document.getElementById('trendPeriodSelect').addEventListener('change', (e)=>{
+    trendPeriod = e.target.value;
+    renderTrendChart();
+  });
+  document.getElementById('savingsPeriodSelect').addEventListener('change', (e)=>{
+    savingsPeriod = e.target.value;
+    renderSavingsChart();
+  });
+  document.getElementById('btnDeleteSelected').addEventListener('click', async (e)=>{
+    const btn = e.currentTarget;
+    if(selected.size===0) return;
+    if(btn.dataset.confirm!=='1'){
+      btn.dataset.confirm = '1';
+      btn.textContent = 'Confermi? (' + selected.size + ')';
+      btn.style.background = 'var(--rust)';
+      btn.style.color = '#fff';
+      clearTimeout(btn._resetTimer);
+      btn._resetTimer = setTimeout(()=>{
+        btn.dataset.confirm = '0';
+        btn.textContent = 'Elimina selezionate';
+        btn.style.background = '';
+        btn.style.color = '';
+      }, 3000);
+      return;
+    }
+    clearTimeout(btn._resetTimer);
+    btn.dataset.confirm = '0';
+    btn.textContent = 'Elimina selezionate';
+    btn.style.background = '';
+    btn.style.color = '';
+    const oldMonths = monthsPresent();
+    all = all.filter(t=>!selected.has(t.transaction_id));
+    selected.clear();
+    await persistAll(oldMonths);
+    renderMonthChips();
+    renderAll();
+  });
+
+  document.getElementById('checkAllHeader').addEventListener('change', (e)=>{
+    const rows = getFiltered();
+    if(e.target.checked) rows.forEach(t=>selected.add(t.transaction_id));
+    else rows.forEach(t=>selected.delete(t.transaction_id));
+    renderTable();
+  });
+  document.querySelectorAll('thead th[data-key]').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      const key = th.dataset.key;
+      if(sortKey===key) sortDir *= -1; else { sortKey = key; sortDir = -1; }
+      renderTable();
+    });
+  });
+  document.getElementById('resetAllLink').addEventListener('click', async (e)=>{
+    e.preventDefault();
+    const link = e.currentTarget;
+    if(link.dataset.confirm !== '1'){
+      link.dataset.confirm = '1';
+      link.textContent = 'clicca di nuovo per confermare';
+      clearTimeout(link._resetTimer);
+      link._resetTimer = setTimeout(()=>{
+        link.dataset.confirm = '0';
+        link.textContent = 'cancella tutti i dati salvati';
+      }, 3000);
+      return;
+    }
+    clearTimeout(link._resetTimer);
+    link.dataset.confirm = '0';
+    link.textContent = 'cancella tutti i dati salvati';
+    try{
+      const res = await kvList('month:');
+      if(res && res.keys){
+        for(const k of res.keys){ await kvDelete(k); }
+      }
+    }catch(err){}
+    all = []; activeMonths.clear(); selected.clear();
+    document.getElementById('uploadStatus').textContent = 'Dati cancellati. Carica un nuovo export per iniziare.';
+    renderMonthChips(); renderAll();
+  });
+
+  document.getElementById('btnExportData').addEventListener('click', ()=>{
+    const payload = {
+      exported_from: 'Libro Mastro',
+      exported_at: new Date().toISOString(),
+      version: 1,
+      transactions: all
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = 'libro-mastro-backup_' + stamp + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    document.getElementById('ioStatus').textContent = all.length + ' transazioni esportate.';
+  });
+
+  document.getElementById('importDataInput').addEventListener('change', async (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const statusEl = document.getElementById('ioStatus');
+    try{
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const incoming = Array.isArray(payload) ? payload : payload.transactions;
+      if(!Array.isArray(incoming)) throw new Error('formato non riconosciuto');
+
+      const oldMonths = monthsPresent();
+      const byId = new Map(all.map(t=>[t.transaction_id, t]));
+      let added = 0, updated = 0;
+      incoming.forEach(r=>{
+        if(!r || !r.transaction_id || !r.date) return;
+        const clean = {
+          transaction_id: r.transaction_id,
+          date: r.date,
+          month: r.month || String(r.date).slice(0,7),
+          name: r.name || '(senza nome)',
+          description: r.description || '',
+          type: r.type || 'MANUAL',
+          category_label: r.category_label || 'Altro',
+          flow: ['income','expense','invest'].includes(r.flow) ? r.flow : 'expense',
+          amount: parseFloat(r.amount) || 0,
+          counterparty: r.counterparty || ''
+        };
+        if(byId.has(clean.transaction_id)) updated++; else added++;
+        byId.set(clean.transaction_id, clean);
+      });
+      all = Array.from(byId.values());
+      await persistAll(oldMonths);
+      renderMonthChips();
+      renderAll();
+      statusEl.textContent = added + ' nuove, ' + updated + ' aggiornate. Totale: ' + all.length + '.';
+    }catch(err){
+      statusEl.textContent = 'File non valido: ' + err.message;
+    }
+    e.target.value = '';
+  });
+
+  // init
+  async function startApp(){
+    const note = document.getElementById('storageBackendNote');
+    note.textContent = '(salvataggio: online, sincronizzato su tutti i dispositivi)';
+    try{
+      all = await loadAllMonths();
+    }catch(e){ all = []; }
+    try{
+      recurringDefs = await loadRecurringDefs();
+    }catch(e){ recurringDefs = []; }
+    renderMonthChips();
+    renderAll();
+  }
+
+  async function tryLogin(code, opts){
+    opts = opts || {};
+    window.APP_PASSCODE = code;
+    const errEl = document.getElementById('loginError');
+    const btn = document.getElementById('loginSubmitBtn');
+    if(!opts.silent){ btn.disabled = true; btn.textContent = 'Verifica...'; errEl.textContent = ''; }
+    try{
+      const res = await fetch('/api/storage?prefix=month:', { headers: passcodeHeaders() });
+      if(res.status===401){
+        if(!opts.silent){
+          errEl.textContent = 'Codice non valido, riprova.';
+          btn.disabled = false; btn.textContent = 'Entra';
+        } else {
+          document.getElementById('loginGate').style.display = 'flex';
+        }
+        localStorage.removeItem('lm_passcode');
+        window.APP_PASSCODE = null;
+        return false;
+      }
+      // login riuscito
+      localStorage.setItem('lm_passcode', code);
+      document.getElementById('loginGate').style.display = 'none';
+      await startApp();
+      return true;
+    }catch(e){
+      // rete non disponibile: se avevamo già un codice salvato, entra comunque
+      // in modalità offline (userà la cache locale finché la rete non torna)
+      if(opts.silent){
+        document.getElementById('loginGate').style.display = 'none';
+        await startApp();
+        return true;
+      }
+      errEl.textContent = 'Impossibile contattare il server. Riprova.';
+      btn.disabled = false; btn.textContent = 'Entra';
+      return false;
+    }
+  }
+
+  document.getElementById('loginSubmitBtn').addEventListener('click', ()=>{
+    const code = document.getElementById('loginPasscodeInput').value.trim();
+    if(!code) return;
+    tryLogin(code);
+  });
+  document.getElementById('loginPasscodeInput').addEventListener('keydown', (e)=>{
+    if(e.key==='Enter') document.getElementById('loginSubmitBtn').click();
+  });
+  document.getElementById('logoutLink').addEventListener('click', (e)=>{
+    e.preventDefault();
+    localStorage.removeItem('lm_passcode');
+    window.APP_PASSCODE = null;
+    location.reload();
+  });
+
+  (async ()=>{
+    const saved = localStorage.getItem('lm_passcode');
+    if(saved){
+      await tryLogin(saved, {silent:true});
+    }
+    // altrimenti resta visibile la schermata di login in attesa dell'inserimento
+  })();
+})();
+</script>
+</body>
+</html>
