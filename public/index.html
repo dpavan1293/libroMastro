@@ -425,8 +425,8 @@
           <div class="f"><label>Categoria</label><select id="fCategory"><option value="">Tutte</option></select></div>
           <div class="f"><label>Dal</label><input type="date" id="fDateFrom"></div>
           <div class="f"><label>Al</label><input type="date" id="fDateTo"></div>
-          <div class="f"><label>Importo min (assoluto)</label><input type="number" class="amt" id="fAmtMin" placeholder="0" min="0"></div>
-          <div class="f"><label>Importo max (assoluto)</label><input type="number" class="amt" id="fAmtMax" placeholder="+∞" min="0"></div>
+          <div class="f"><label>Importo min</label><input type="number" class="amt" id="fAmtMin" placeholder="0" min="0"></div>
+          <div class="f"><label>Importo max</label><input type="number" class="amt" id="fAmtMax" placeholder="+∞" min="0"></div>
           <div class="f"><button id="btnToggleExclude" class="ghost">Escludi categorie ▾</button></div>
           <div class="f"><button id="btnReset" class="ghost">Azzera filtri</button></div>
         </div>
@@ -810,7 +810,7 @@
     const row = document.getElementById('monthsRow');
     const months = monthsPresent();
     if(months.length===0){ row.innerHTML = ''; return; }
-    const size = Math.min(months.length + 1, 8);
+    const size = 1;
     const options = ['<option value="__all__"' + (activeMonths.size===0 ? ' selected' : '') + '>Tutti i mesi</option>']
       .concat(months.map(m=>`<option value="${m}"${activeMonths.has(m) ? ' selected' : ''}>${m}</option>`));
     row.innerHTML = '<div class="month-select-wrap">' +
