@@ -494,10 +494,10 @@
             <option value="12">Ultimi 12 mesi</option>
             <option value="ytd">Anno corrente</option>
           </select>
-          <button id="btnToggleSavings" class="io-btn-solid">▸ Mostra</button>
+          <button id="btnToggleSavings" class="io-btn-solid">▾ Nascondi</button>
         </div>
       </div>
-      <div id="savingsChartWrap" style="display:none;">
+      <div id="savingsChartWrap" style="display:block;">
         <div id="savingsHistWrap">
           <div class="savings-canvas-box" id="savingsHistBox">
             <canvas id="savingsHistChart" height="150"></canvas>
@@ -527,7 +527,6 @@
           <div class="f"><label>Spese future (mensili)</label><input type="number" step="0.01" id="fcExpense" placeholder="media storica" style="width:120px;"></div>
           <div class="f"><label>Orizzonte (anni)</label><input type="number" min="1" max="100" id="fcYears" value="5" style="width:70px;"></div>
         </div>
-        <div id="forecastSummary" class="small-note" style="margin:0 0 12px;"></div>
         <div class="savings-canvas-box" id="forecastBox">
           <canvas id="forecastChart" height="150"></canvas>
         </div>
@@ -571,7 +570,7 @@
   let selected = new Set();   // transaction_id of selected rows
   let sortKey = 'date', sortDir = -1;
   let trendChart, catChart, savingsChart, savingsHistChart, forecastChart;
-  let savingsOpen = false, forecastOpen = false;
+  let savingsOpen = true, forecastOpen = false;
   let catPeriod = 'all', trendPeriod = 'all', savingsPeriod = 'all';
   let excludedCategories = new Set();
 
@@ -1076,19 +1075,29 @@
   function computeMonthlyAverages(){
     const months = monthsPresent();
     let income = 0, expense = 0, invest = 0;
+    const perMonth = [];
     months.forEach(m=>{
       const rows = all.filter(t=>t.month===m);
-      income += rows.filter(t=>t.flow==='income').reduce((s,t)=>s+t.amount,0);
-      expense += rows.filter(t=>t.flow==='expense').reduce((s,t)=>s+t.amount,0);
-      invest += rows.filter(t=>t.flow==='invest').reduce((s,t)=>s+t.amount,0);
+      const inc = rows.filter(t=>t.flow==='income').reduce((s,t)=>s+t.amount,0);
+      const exp = rows.filter(t=>t.flow==='expense').reduce((s,t)=>s+t.amount,0);
+      const inv = rows.filter(t=>t.flow==='invest').reduce((s,t)=>s+t.amount,0);
+      income += inc; expense += exp; invest += inv;
+      perMonth.push({mese: m, entrate: inc, uscite: exp, investimenti: inv, saldo: inc+exp+inv});
     });
     const n = months.length;
-    return {
+    console.groupCollapsed('[Previsioni] 1. Medie mensili');
+    console.table(perMonth);
+    console.log('TOTALI  entrate=%f  uscite=%f  investimenti=%f  (mesi considerati=%d)', income, expense, invest, n);
+    const res = {
       avgIncome: income/n,
       avgExpense: expense/n,
       avgSavings: (income+expense)/n,
       avgInvestFlow: n>0 ? -invest/n : 0
     };
+    console.table({...res, risparmioMedioMensile: res.avgSavings, investitoMedioMensile: res.avgInvestFlow});
+    console.log('formula: avgIncome=entrate/n · avgExpense=uscite/n · avgSavings=(entrate+uscite)/n · avgInvestFlow=-investimenti/n');
+    console.groupEnd();
+    return res;
   }
 
   function renderForecastChart(){
@@ -1103,44 +1112,84 @@
       noteEl.innerHTML = 'Carica o inserisci qualche transazione per vedere le previsioni.';
       return;
     }
-    noteEl.innerHTML = 'La previsione parte dal patrimonio attuale e usa il risparmio medio mensile e gli investimenti medi mensili calcolati su tutta la raccolta dati. Entrate e spese future possono essere impostate a mano (vuote = media storica); il rendimento si applica sul capitale investito.';
-
     const histLabels = [], histWealth = [];
-    let wealth = 0;
+    let cash = 0, investedSum = 0;
     months.forEach(m=>{
-      wealth += all.filter(t=>t.month===m).reduce((s,t)=>s+t.amount,0);
+      cash += all.filter(t=>t.month===m).reduce((s,t)=>s+t.amount,0);
+      investedSum += all.filter(t=>t.month===m && t.flow==='invest').reduce((s,t)=>s+t.amount,0);
       histLabels.push(m);
-      histWealth.push(Math.round(wealth*100)/100);
+      histWealth.push(Math.round((cash - investedSum)*100)/100); // cassa + capitale investito (a costo)
     });
-    const currentWealth = histWealth[histWealth.length-1];
-    const investedNow = -all.filter(t=>t.flow==='invest').reduce((s,t)=>s+t.amount,0);
+    const currentCash = Math.round(cash*100)/100;
+    const currentWealth = histWealth[histWealth.length-1];  // patrimonio attuale = cassa + investito
+    const investedNow = -investedSum;                       // capitale investito netto (a costo)
     const avg = computeMonthlyAverages();
     const p = getForecastParams();
 
     const forecastLabels = [], forecastData = [];
-    let fw = currentWealth, fi = investedNow;
+    let fi = investedNow, fw = currentWealth;
     const lastLabel = histLabels[histLabels.length-1];
     const monthsAhead = p.years * 12;
     const retMonthly = p.retAnn > -99 ? Math.pow(1 + p.retAnn/100, 1/12) - 1 : 0;
+
+    console.groupCollapsed('[Previsioni] 2. Punti di partenza');
+    console.log('cassa attuale   = %f   (somma cumulativa di tutte le transazioni)', currentCash);
+    console.log('investito attuale (a costo) = %f   (−Σ degli investimenti)', investedNow);
+    console.log('PATRIMONIO ATTUALE = cassa + investito = %f', currentWealth);
+    console.log('parametri input: rendimento annuo=%s%% · entrate future=%s · spese future=%s · anni=%d',
+      p.retAnn, p.incomeSet ? p.income : 'media storica', p.expenseSet ? p.expense : 'media storica', p.years);
+    console.log('retMonthly = (1 + %d/100)^(1/12) − 1 = %f', p.retAnn, retMonthly);
+    console.log('NOTA: il rendimento si applica SOLO sul capitale già investito, le nuove somme investite rendono dal mese successivo');
+    console.groupEnd();
+
+    const steps = [];
     for(let i=1; i<=monthsAhead; i++){
       const next = addMonths(lastLabel, i);
       const cashFlow = (p.incomeSet ? p.income : avg.avgIncome) + (p.expenseSet ? -Math.abs(p.expense) : avg.avgExpense);
-      const gain = fi * retMonthly;
-      fi += avg.avgInvestFlow + gain;
-      fw += cashFlow + avg.avgInvestFlow + gain;
+      const gain = fi * retMonthly;                 // rendimento solo sul capitale già investito
+      fi += avg.avgInvestFlow + gain;               // il capitale investito cresce per nuovi versamenti + rendimenti reinvestiti
+      cash += cashFlow - avg.avgInvestFlow;         // la cassa: entra il risparmio netto, esce il versamento investito
+      fw = cash + fi;                               // patrimonio = cassa + investito
       forecastLabels.push(next);
       forecastData.push(Math.round(fw*100)/100);
+      steps.push({
+        mese: next,
+        entrateFut: p.incomeSet ? p.income : avg.avgIncome,
+        usciteFut: p.expenseSet ? -p.expense : avg.avgExpense,
+        cashFlow: Math.round(cashFlow*100)/100,
+        gain: Math.round(gain*100)/100,
+        investMese: Math.round(avg.avgInvestFlow*100)/100,
+        cassa: Math.round(cash*100)/100,
+        investito: Math.round(fi*100)/100,
+        patrimonio: Math.round(fw*100)/100
+      });
     }
+    console.groupCollapsed('[Previsioni] 3. Proiezione mese per mese (patrimonio = cassa + investito; cassa += cashFlow − investMese; investito += investMese + gain)');
+    console.table(steps);
+    console.groupEnd();
+
+    console.group('[Previsioni] 4. Riepilogo');
+    console.log('Patrimonio attuale (cassa + investito)  = %f', currentWealth);
+    console.log('Patrimonio stimato tra %d anni          = %f', p.years, forecastData[forecastData.length-1]);
+    console.log('Capitale investito stimato              = %f', Math.round(fi*100)/100);
+    console.log('Rendimenti complessivi maturati         = %f', steps.reduce((s,r)=>s+r.gain,0));
+    console.log('Crescita totale prevista                = %f', forecastData[forecastData.length-1] - currentWealth);
+    console.groupEnd();
 
     const allLabels = histLabels.concat(forecastLabels);
     const histSeries = histWealth.concat(new Array(forecastLabels.length).fill(null));
     const foreSeries = new Array(histLabels.length-1).fill(null).concat([currentWealth]).concat(forecastData);
 
-    document.getElementById('forecastSummary').textContent =
-      'Risparmio medio mensile: ' + eur(avg.avgSavings) +
-      ' · Investito medio mensile: ' + eur(avg.avgInvestFlow) +
-      ' · Patrimonio attuale: ' + eur(currentWealth) +
-      ' · Patrimonio stimato tra ' + p.years + ' anni: ' + eur(forecastData[forecastData.length-1]);
+    const rendimentiTotali = steps.reduce((s,r)=>s+r.gain,0);
+    noteEl.innerHTML =
+      'Entrate medie mensili: <b>' + eur(avg.avgIncome) + '</b>' +
+      ' · Spese medie mensili: <b>' + eur(avg.avgExpense) + '</b>' +
+      ' · Risparmio medio mensile: <b>' + eur(avg.avgSavings) + '</b>' +
+      '<br>Investimenti medi mensili: <b>' + eur(avg.avgInvestFlow) + '</b>' +
+      ' · Patrimonio attuale (cassa + investimenti): <b>' + eur(currentWealth) + '</b>' +
+      '<br>Rendimenti totali maturati in ' + p.years + ' anni: <b>' + eur(rendimentiTotali) + '</b>' +
+      ' · Capitale investito finale: <b>' + eur(Math.round(fi*100)/100) + '</b>' +
+      ' · Patrimonio totale finale: <b>' + eur(forecastData[forecastData.length-1]) + '</b>';
 
     const canvasEl = document.getElementById('forecastChart');
     if(forecastChart) forecastChart.destroy();
@@ -1149,7 +1198,7 @@
       data:{
         labels: allLabels,
         datasets:[
-          {label:'Patrimonio (storico)', data: histSeries, borderColor:'#2f5c3f', backgroundColor:'rgba(47,92,63,0.12)', tension:0.25, fill:true, pointRadius:2},
+          {label:'Patrimonio (storico: cassa + investimenti)', data: histSeries, borderColor:'#2f5c3f', backgroundColor:'rgba(47,92,63,0.12)', tension:0.25, fill:true, pointRadius:2},
           {label:'Previsione', data: foreSeries, borderColor:'#b8862c', backgroundColor:'rgba(184,134,44,0.08)', tension:0.25, fill:true, borderDash:[5,4], pointRadius:0}
         ]
       },
