@@ -91,17 +91,8 @@
   .detected-row .di-main{display:flex; flex-direction:column; gap:2px;}
   .detected-row .di-meta{color:var(--ink-soft); font-size:11px;}
 
-  /* MONTH SELECT */
-  .months-row{margin-bottom:24px;}
-  .month-select-wrap{display:flex; align-items:center; gap:12px; flex-wrap:wrap;}
-  .month-select{
-    font-family:'IBM Plex Mono', monospace; font-size:12px;
-    padding:6px 8px; border:1px solid var(--rule); border-radius:3px;
-    background:var(--paper); color:var(--ink); min-width:240px;
-  }
-  .month-select option{padding:3px 6px;}
-  .month-select option:checked{background:var(--gold); color:#221a08; font-weight:600;}
-  .month-select-hint{font-size:11.5px; color:var(--ink-soft); font-style:italic;}
+  /* MONTH CHIPS */
+  .months-row{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:24px;}
   .chip{
     background:var(--paper-dim); border:1px solid var(--rule); color:var(--ink);
     padding:5px 12px; border-radius:14px; font-size:12px; cursor:pointer;
@@ -224,7 +215,6 @@
 
   .savings-canvas-box{position:relative; width:100%; height:300px;}
   #savingsLineBox{height:260px;}
-  #forecastBox{height:280px;}
 
   /* ---------- MOBILE ---------- */
   @media (max-width: 640px){
@@ -260,18 +250,6 @@
 </style>
 </head>
 <body>
-
-<div id="loginGate" style="position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:1000; padding:20px;">
-  <div style="background:var(--paper); border-radius:4px; padding:32px 30px; max-width:340px; width:100%; box-shadow:0 12px 30px rgba(0,0,0,0.4); text-align:center;">
-    <div style="font-family:'Spectral SC', serif; font-size:20px; color:var(--ink); margin-bottom:6px;">Libro Mastro</div>
-    <div style="font-family:'Spectral', serif; font-style:italic; color:var(--ink-soft); font-size:13px; margin-bottom:20px;">Accesso privato — inserisci il tuo codice</div>
-    <input type="password" id="loginPasscodeInput" placeholder="Codice d'accesso" autocomplete="current-password"
-      style="width:100%; padding:10px 12px; font-family:'IBM Plex Mono', monospace; font-size:14px; border:1px solid var(--rule); border-radius:2px; margin-bottom:10px; box-sizing:border-box;">
-    <button id="loginSubmitBtn" style="width:100%; background:var(--ink); color:var(--paper); border:none; padding:10px; border-radius:2px; font-family:'IBM Plex Mono', monospace; font-size:13px; font-weight:600; cursor:pointer;">Entra</button>
-    <div id="loginError" style="color:var(--rust); font-size:12px; margin-top:10px; min-height:16px;"></div>
-  </div>
-</div>
-
 <div id="loadingOverlay" class="loading-overlay">
   <div class="loading-box">
     <div class="loading-spinner"></div>
@@ -279,7 +257,6 @@
     <div class="lb-sub" id="loadingLabel">Caricamento...</div>
   </div>
 </div>
-
 <div class="wrap">
 
   <div class="ledger-header">
@@ -480,7 +457,7 @@
           <button id="btnDeleteSelected" class="del-btn" style="border:1px solid var(--rust); margin-left:8px; font-size:11px; padding:3px 9px;" disabled>Elimina selezionate</button>
         </div>
       </div>
-      <div class="small-note">I dati caricati vengono salvati privatamente (solo per te) così puoi confrontare i mesi nel tempo. <span id="storageBackendNote"></span> <span id="resetAllWrap">— <a href="#" id="resetAllLink" style="color:var(--rust);">cancella tutti i dati salvati</a></span> <span>— <a href="#" id="logoutLink" style="color:var(--ink-soft);">esci</a></span></div>
+      <div class="small-note">I dati caricati vengono salvati privatamente (solo per te) così puoi confrontare i mesi nel tempo. <span id="storageBackendNote"></span> <span id="resetAllWrap">— <a href="#" id="resetAllLink" style="color:var(--rust);">cancella tutti i dati salvati</a></span></div>
     </div>
 
     <div class="section" id="savingsSection">
@@ -497,7 +474,7 @@
           <button id="btnToggleSavings" class="io-btn-solid">▸ Mostra</button>
         </div>
       </div>
-      <div id="savingsChartWrap" style="display:none;">
+      <div id="savingsChartWrap" style="display:block;">
         <div id="savingsHistWrap">
           <div class="savings-canvas-box" id="savingsHistBox">
             <canvas id="savingsHistChart" height="150"></canvas>
@@ -510,28 +487,6 @@
           </div>
           <div class="small-note">Clicca sulla legenda per confrontare solo una delle due serie cumulative.</div>
         </div>
-      </div>
-    </div>
-
-    <div class="section" id="forecastSection">
-      <div class="section-title">
-        <span>Previsioni di crescita del patrimonio</span>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <button id="btnToggleForecast" class="io-btn-solid">▸ Mostra</button>
-        </div>
-      </div>
-      <div id="forecastChartWrap" style="display:none;">
-        <div class="filters" style="margin-bottom:12px;">
-          <div class="f"><label>Rendimento investimenti (% annuo)</label><input type="number" step="0.1" id="fcReturn" value="5" style="width:90px;"></div>
-          <div class="f"><label>Entrate future (mensili)</label><input type="number" step="0.01" id="fcIncome" placeholder="media storica" style="width:120px;"></div>
-          <div class="f"><label>Spese future (mensili)</label><input type="number" step="0.01" id="fcExpense" placeholder="media storica" style="width:120px;"></div>
-          <div class="f"><label>Orizzonte (anni)</label><input type="number" min="1" max="100" id="fcYears" value="5" style="width:70px;"></div>
-        </div>
-        <div id="forecastSummary" class="small-note" style="margin:0 0 12px;"></div>
-        <div class="savings-canvas-box" id="forecastBox">
-          <canvas id="forecastChart" height="150"></canvas>
-        </div>
-        <div class="small-note" id="forecastNote">La previsione parte dal patrimonio attuale e usa il risparmio medio mensile e gli investimenti medi mensili calcolati su tutta la raccolta dati. Entrate e spese future possono essere impostate a mano (vuote = media storica); il rendimento si applica sul capitale investito.</div>
       </div>
     </div>
 
@@ -570,8 +525,8 @@
   let activeMonths = new Set();
   let selected = new Set();   // transaction_id of selected rows
   let sortKey = 'date', sortDir = -1;
-  let trendChart, catChart, savingsChart, savingsHistChart, forecastChart;
-  let savingsOpen = false, forecastOpen = false;
+  let trendChart, catChart, savingsChart, savingsHistChart;
+  let savingsOpen = false;
   let catPeriod = 'all', trendPeriod = 'all', savingsPeriod = 'all';
   let excludedCategories = new Set();
 
@@ -622,10 +577,9 @@
   }
 
   // --- Persistence layer -------------------------------------------------
-  // Storage online tramite Netlify Function + Netlify Blobs (sincronizzato
-  // su tutti i dispositivi). L'accesso richiede il codice personale inserito
-  // nella schermata iniziale. IndexedDB viene usato solo come cache locale
-  // per un caricamento più rapido e come fallback se la rete non risponde.
+  // Uses Claude's window.storage when available (inside claude.ai).
+  // Falls back to the browser's IndexedDB when the file is opened directly
+  // (e.g. double-clicked from disk), so data still persists on that device.
   let idbPromise = null;
   function openIdb(){
     if(idbPromise) return idbPromise;
@@ -677,65 +631,29 @@
     });
   }
 
-  let storageBackend = 'online'; // impostato definitivamente dopo il login
+  const hasClaudeStorage = (typeof window.storage !== 'undefined');
+  const hasIndexedDb = (typeof indexedDB !== 'undefined');
+  let storageBackend = hasClaudeStorage ? 'claude' : (hasIndexedDb ? 'indexeddb' : 'none');
 
-  function passcodeHeaders(){
-    return { 'content-type':'application/json', 'x-app-passcode': (window.APP_PASSCODE || '') };
-  }
-
-  async function apiGet(key){
-    const res = await fetch('/api/storage?key=' + encodeURIComponent(key), { headers: passcodeHeaders() });
-    if(res.status===401) throw new Error('unauthorized');
-    if(!res.ok) throw new Error('network');
-    return await res.json();
-  }
-  async function apiSet(key, value){
-    const res = await fetch('/api/storage', { method:'POST', headers: passcodeHeaders(), body: JSON.stringify({key, value}) });
-    if(res.status===401) throw new Error('unauthorized');
-    if(!res.ok) throw new Error('network');
-    return await res.json();
-  }
-  async function apiDelete(key){
-    const res = await fetch('/api/storage?key=' + encodeURIComponent(key), { method:'DELETE', headers: passcodeHeaders() });
-    if(res.status===401) throw new Error('unauthorized');
-    if(!res.ok) throw new Error('network');
-    return await res.json();
-  }
-  async function apiList(prefix){
-    const res = await fetch('/api/storage?prefix=' + encodeURIComponent(prefix||''), { headers: passcodeHeaders() });
-    if(res.status===401) throw new Error('unauthorized');
-    if(!res.ok) throw new Error('network');
-    return await res.json();
-  }
-
-  // kvGet/kvSet/... provano prima il backend online; se la rete non
-  // risponde usano la cache locale (IndexedDB) così l'app resta usabile
-  // anche offline, e risincronizzano al prossimo salvataggio riuscito.
   async function kvGet(key){
-    try{
-      const res = await apiGet(key);
-      if(res && res.value!==null && res.value!==undefined) await idbSet(key, res.value);
-      return res;
-    }catch(e){
-      if(e.message==='unauthorized') throw e;
-      return await idbGet(key).catch(()=>null);
-    }
+    if(storageBackend==='claude') return await window.storage.get(key, false);
+    if(storageBackend==='indexeddb') return await idbGet(key);
+    return null;
   }
   async function kvSet(key, value){
-    await idbSet(key, value); // scrive subito la cache locale
-    return await apiSet(key, value); // poi sincronizza online (lancia errore se offline/non autorizzato)
+    if(storageBackend==='claude') return await window.storage.set(key, value, false);
+    if(storageBackend==='indexeddb') return await idbSet(key, value);
+    return null;
   }
   async function kvDelete(key){
-    await idbDelete(key).catch(()=>{});
-    return await apiDelete(key);
+    if(storageBackend==='claude') return await window.storage.delete(key, false);
+    if(storageBackend==='indexeddb') return await idbDelete(key);
+    return null;
   }
   async function kvList(prefix){
-    try{
-      return await apiList(prefix);
-    }catch(e){
-      if(e.message==='unauthorized') throw e;
-      return await idbList(prefix).catch(()=>({keys:[]}));
-    }
+    if(storageBackend==='claude') return await window.storage.list(prefix, false);
+    if(storageBackend==='indexeddb') return await idbList(prefix);
+    return {keys:[]};
   }
 
   async function saveMonth(month, rows){
@@ -809,24 +727,23 @@
 
   function renderMonthChips(){
     const row = document.getElementById('monthsRow');
+    row.innerHTML = '';
     const months = monthsPresent();
-    if(months.length===0){ row.innerHTML = ''; return; }
-    const size = Math.min(months.length + 1, 8);
-    const options = ['<option value="__all__"' + (activeMonths.size===0 ? ' selected' : '') + '>Tutti i mesi</option>']
-      .concat(months.map(m=>`<option value="${m}"${activeMonths.has(m) ? ' selected' : ''}>${m}</option>`));
-    row.innerHTML = '<div class="month-select-wrap">' +
-      '<select class="month-select" id="monthSelect" multiple size="' + size + '">' + options.join('') + '</select>' +
-      '<span class="month-select-hint">seleziona i mesi da confrontare — Ctrl/⌘+clic per più di uno; nessuna selezione o "Tutti i mesi" = tutto lo storico</span>' +
-      '</div>';
-    const sel = document.getElementById('monthSelect');
-    sel.addEventListener('change', ()=>{
-      const vals = Array.from(sel.selectedOptions).map(o=>o.value);
-      activeMonths.clear();
-      if(!vals.includes('__all__')){
-        vals.forEach(v=>{ if(v!=='__all__') activeMonths.add(v); });
-      }
-      renderMonthChips();
-      renderAll();
+    if(months.length===0) return;
+    const allChip = document.createElement('div');
+    allChip.className = 'chip' + (activeMonths.size===0 ? ' active' : '');
+    allChip.textContent = 'Tutti i mesi';
+    allChip.onclick = ()=>{ activeMonths.clear(); renderMonthChips(); renderAll(); };
+    row.appendChild(allChip);
+    months.forEach(m=>{
+      const chip = document.createElement('div');
+      chip.className = 'chip' + (activeMonths.has(m) ? ' active' : '');
+      chip.textContent = m;
+      chip.onclick = ()=>{
+        if(activeMonths.has(m)) activeMonths.delete(m); else activeMonths.add(m);
+        renderMonthChips(); renderAll();
+      };
+      row.appendChild(chip);
     });
   }
 
@@ -1031,138 +948,6 @@
     renderSavingsHistChart();
   }
 
-  function addMonths(mStr, n){
-    const parts = String(mStr).split('-').map(Number);
-    const total = parts[0]*12 + (parts[1]-1) + n;
-    return Math.floor(total/12) + '-' + pad2((total%12)+1);
-  }
-
-  function loadForecastSettings(){
-    try{
-      const raw = localStorage.getItem('lm_forecast_settings');
-      if(!raw) return;
-      const s = JSON.parse(raw);
-      if(typeof s.retAnn !== 'undefined') document.getElementById('fcReturn').value = s.retAnn;
-      if(typeof s.income !== 'undefined') document.getElementById('fcIncome').value = s.income;
-      if(typeof s.expense !== 'undefined') document.getElementById('fcExpense').value = s.expense;
-      if(typeof s.years !== 'undefined') document.getElementById('fcYears').value = s.years;
-    }catch(e){}
-  }
-
-  function saveForecastSettings(){
-    try{
-      localStorage.setItem('lm_forecast_settings', JSON.stringify({
-        retAnn: document.getElementById('fcReturn').value,
-        income: document.getElementById('fcIncome').value,
-        expense: document.getElementById('fcExpense').value,
-        years: document.getElementById('fcYears').value
-      }));
-    }catch(e){}
-  }
-
-  function getForecastParams(){
-    const retAnn = parseFloat(document.getElementById('fcReturn').value);
-    const incomeRaw = document.getElementById('fcIncome').value.trim();
-    const expenseRaw = document.getElementById('fcExpense').value.trim();
-    const years = parseInt(document.getElementById('fcYears').value, 10);
-    return {
-      retAnn: isNaN(retAnn) ? 0 : retAnn,
-      incomeSet: incomeRaw !== '', income: parseFloat(incomeRaw) || 0,
-      expenseSet: expenseRaw !== '', expense: parseFloat(expenseRaw) || 0,
-      years: (!isNaN(years) && years>=1 && years<=100) ? years : 5
-    };
-  }
-
-  function computeMonthlyAverages(){
-    const months = monthsPresent();
-    let income = 0, expense = 0, invest = 0;
-    months.forEach(m=>{
-      const rows = all.filter(t=>t.month===m);
-      income += rows.filter(t=>t.flow==='income').reduce((s,t)=>s+t.amount,0);
-      expense += rows.filter(t=>t.flow==='expense').reduce((s,t)=>s+t.amount,0);
-      invest += rows.filter(t=>t.flow==='invest').reduce((s,t)=>s+t.amount,0);
-    });
-    const n = months.length;
-    return {
-      avgIncome: income/n,
-      avgExpense: expense/n,
-      avgSavings: (income+expense)/n,
-      avgInvestFlow: n>0 ? -invest/n : 0
-    };
-  }
-
-  function renderForecastChart(){
-    if(!forecastOpen) return; // non renderizzare mentre è chiuso (canvas nascosto)
-    const noteEl = document.getElementById('forecastNote');
-    if(typeof Chart === 'undefined'){
-      noteEl.innerHTML = 'Grafico non disponibile (libreria non caricata).';
-      return;
-    }
-    const months = monthsPresent();
-    if(months.length===0){
-      noteEl.innerHTML = 'Carica o inserisci qualche transazione per vedere le previsioni.';
-      return;
-    }
-    noteEl.innerHTML = 'La previsione parte dal patrimonio attuale e usa il risparmio medio mensile e gli investimenti medi mensili calcolati su tutta la raccolta dati. Entrate e spese future possono essere impostate a mano (vuote = media storica); il rendimento si applica sul capitale investito.';
-
-    const histLabels = [], histWealth = [];
-    let wealth = 0;
-    months.forEach(m=>{
-      wealth += all.filter(t=>t.month===m).reduce((s,t)=>s+t.amount,0);
-      histLabels.push(m);
-      histWealth.push(Math.round(wealth*100)/100);
-    });
-    const currentWealth = histWealth[histWealth.length-1];
-    const investedNow = -all.filter(t=>t.flow==='invest').reduce((s,t)=>s+t.amount,0);
-    const avg = computeMonthlyAverages();
-    const p = getForecastParams();
-
-    const forecastLabels = [], forecastData = [];
-    let fw = currentWealth, fi = investedNow;
-    const lastLabel = histLabels[histLabels.length-1];
-    const monthsAhead = p.years * 12;
-    const retMonthly = p.retAnn > -99 ? Math.pow(1 + p.retAnn/100, 1/12) - 1 : 0;
-    for(let i=1; i<=monthsAhead; i++){
-      const next = addMonths(lastLabel, i);
-      const cashFlow = (p.incomeSet ? p.income : avg.avgIncome) + (p.expenseSet ? -Math.abs(p.expense) : avg.avgExpense);
-      const gain = fi * retMonthly;
-      fi += avg.avgInvestFlow + gain;
-      fw += cashFlow + avg.avgInvestFlow + gain;
-      forecastLabels.push(next);
-      forecastData.push(Math.round(fw*100)/100);
-    }
-
-    const allLabels = histLabels.concat(forecastLabels);
-    const histSeries = histWealth.concat(new Array(forecastLabels.length).fill(null));
-    const foreSeries = new Array(histLabels.length-1).fill(null).concat([currentWealth]).concat(forecastData);
-
-    document.getElementById('forecastSummary').textContent =
-      'Risparmio medio mensile: ' + eur(avg.avgSavings) +
-      ' · Investito medio mensile: ' + eur(avg.avgInvestFlow) +
-      ' · Patrimonio attuale: ' + eur(currentWealth) +
-      ' · Patrimonio stimato tra ' + p.years + ' anni: ' + eur(forecastData[forecastData.length-1]);
-
-    const canvasEl = document.getElementById('forecastChart');
-    if(forecastChart) forecastChart.destroy();
-    forecastChart = new Chart(canvasEl, {
-      type:'line',
-      data:{
-        labels: allLabels,
-        datasets:[
-          {label:'Patrimonio (storico)', data: histSeries, borderColor:'#2f5c3f', backgroundColor:'rgba(47,92,63,0.12)', tension:0.25, fill:true, pointRadius:2},
-          {label:'Previsione', data: foreSeries, borderColor:'#b8862c', backgroundColor:'rgba(184,134,44,0.08)', tension:0.25, fill:true, borderDash:[5,4], pointRadius:0}
-        ]
-      },
-      options:{
-        maintainAspectRatio:false,
-        plugins:{legend:{labels:{color:'#22301f', font:{family:"'IBM Plex Mono'", size:11}}},
-          tooltip:{callbacks:{label:(ctx)=> ctx.dataset.label + ': ' + eur(ctx.parsed.y)}}},
-        scales:{ x:{ticks:{color:'#52604c'}, grid:{display:false}},
-                 y:{ticks:{color:'#52604c'}, grid:{color:'#e3e7d6'}} }
-      }
-    });
-  }
-
   function renderTrendChart(){
     if(typeof Chart === 'undefined'){
       document.getElementById('trendChartWrap').innerHTML = '<div class="small-note">Grafico non disponibile (libreria non caricata). Il registro e i totali funzionano comunque normalmente.</div>';
@@ -1274,7 +1059,6 @@
     renderCatChart();
     renderTrendChart();
     renderSavingsCharts();
-    renderForecastChart();
     populateCategoryFilter();
     renderTable();
   }
@@ -1332,7 +1116,6 @@
     renderCatChart();
     renderTrendChart();
     renderSavingsCharts();
-    renderForecastChart();
     populateCategoryFilter();
     renderTable();
   }
@@ -1688,18 +1471,6 @@
     e.target.textContent = savingsOpen ? '▾ Nascondi' : '▸ Mostra';
     if(savingsOpen) renderSavingsCharts();
   };
-  document.getElementById('btnToggleForecast').onclick = (e)=>{
-    forecastOpen = !forecastOpen;
-    document.getElementById('forecastChartWrap').style.display = forecastOpen ? 'block' : 'none';
-    e.target.textContent = forecastOpen ? '▾ Nascondi' : '▸ Mostra';
-    if(forecastOpen) renderForecastChart();
-  };
-  ['fcReturn','fcIncome','fcExpense','fcYears'].forEach(id=>{
-    document.getElementById(id).addEventListener('input', ()=>{
-      saveForecastSettings();
-      renderForecastChart();
-    });
-  });
   document.getElementById('catPeriodSelect').addEventListener('change', (e)=>{
     catPeriod = e.target.value;
     renderCatChart();
@@ -1871,9 +1642,11 @@
   });
 
   // init
-  async function startApp(){
+  (async ()=>{
     const note = document.getElementById('storageBackendNote');
-    note.textContent = '(salvataggio: online, sincronizzato su tutti i dispositivi)';
+    if(storageBackend==='claude') note.textContent = '(salvataggio: memoria Claude)';
+    else if(storageBackend==='indexeddb') note.textContent = '(salvataggio: memoria di questo browser)';
+    else note.textContent = '(salvataggio non disponibile in questo browser: i dati non persisteranno)';
     showLoading('Caricamento dei dati salvati...');
     try{
       try{
@@ -1882,76 +1655,11 @@
       try{
         recurringDefs = await loadRecurringDefs();
       }catch(e){ recurringDefs = []; }
-      loadForecastSettings();
       renderMonthChips();
       renderAll();
     }finally{
       hideLoading();
     }
-  }
-
-  async function tryLogin(code, opts){
-    opts = opts || {};
-    window.APP_PASSCODE = code;
-    const errEl = document.getElementById('loginError');
-    const btn = document.getElementById('loginSubmitBtn');
-    if(!opts.silent){ btn.disabled = true; btn.textContent = 'Verifica...'; errEl.textContent = ''; }
-    showLoading('Verifica del codice di accesso...');
-    try{
-      const res = await fetch('/api/storage?prefix=month:', { headers: passcodeHeaders() });
-      if(res.status===401){
-        if(!opts.silent){
-          errEl.textContent = 'Codice non valido, riprova.';
-          btn.disabled = false; btn.textContent = 'Entra';
-        } else {
-          document.getElementById('loginGate').style.display = 'flex';
-        }
-        localStorage.removeItem('lm_passcode');
-        window.APP_PASSCODE = null;
-        return false;
-      }
-      // login riuscito
-      localStorage.setItem('lm_passcode', code);
-      document.getElementById('loginGate').style.display = 'none';
-      await startApp();
-      return true;
-    }catch(e){
-      // rete non disponibile: se avevamo già un codice salvato, entra comunque
-      // in modalità offline (userà la cache locale finché la rete non torna)
-      if(opts.silent){
-        document.getElementById('loginGate').style.display = 'none';
-        await startApp();
-        return true;
-      }
-      errEl.textContent = 'Impossibile contattare il server. Riprova.';
-      btn.disabled = false; btn.textContent = 'Entra';
-      return false;
-    }finally{
-      hideLoading();
-    }
-  }
-
-  document.getElementById('loginSubmitBtn').addEventListener('click', ()=>{
-    const code = document.getElementById('loginPasscodeInput').value.trim();
-    if(!code) return;
-    tryLogin(code);
-  });
-  document.getElementById('loginPasscodeInput').addEventListener('keydown', (e)=>{
-    if(e.key==='Enter') document.getElementById('loginSubmitBtn').click();
-  });
-  document.getElementById('logoutLink').addEventListener('click', (e)=>{
-    e.preventDefault();
-    localStorage.removeItem('lm_passcode');
-    window.APP_PASSCODE = null;
-    location.reload();
-  });
-
-  (async ()=>{
-    const saved = localStorage.getItem('lm_passcode');
-    if(saved){
-      await tryLogin(saved, {silent:true});
-    }
-    // altrimenti resta visibile la schermata di login in attesa dell'inserimento
   })();
 })();
 </script>
