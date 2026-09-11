@@ -94,16 +94,33 @@
   .detected-row .di-meta{color:var(--ink-soft); font-size:11px;}
 
   /* MONTH SELECT */
-  .months-row{margin-bottom:24px;}
-  .month-select-wrap{display:flex; align-items:center; gap:12px; flex-wrap:wrap;}
-  .month-select{
+  .months-row{margin-bottom:24px; position:relative;}
+  .month-dropdown{position:relative; display:inline-block;}
+  .month-dropdown-btn{
     font-family:'IBM Plex Mono', monospace; font-size:12px;
-    padding:6px 8px; border:1px solid var(--rule); border-radius:3px;
-    background:var(--paper); color:var(--ink); min-width:240px;
+    padding:6px 28px 6px 10px; border:1px solid var(--rule); border-radius:3px;
+    background:var(--paper); color:var(--ink); cursor:pointer;
+    white-space:nowrap; min-width:200px; text-align:left;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b7280'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 10px center;
   }
-  .month-select option{padding:3px 6px;}
-  .month-select option:checked{background:var(--gold); color:#221a08; font-weight:600;}
-  .month-select-hint{font-size:11.5px; color:var(--ink-soft); font-style:italic;}
+  .month-dropdown-btn:hover{border-color:var(--gold);}
+  .month-dropdown-panel{
+    display:none; position:absolute; top:calc(100% + 4px); left:0; z-index:100;
+    background:var(--paper); border:1px solid var(--rule); border-radius:4px;
+    box-shadow:0 8px 20px rgba(0,0,0,0.3); padding:6px 0; min-width:200px;
+    max-height:320px; overflow-y:auto;
+  }
+  .month-dropdown-panel.open{display:block;}
+  .month-dropdown-item{
+    display:flex; align-items:center; gap:8px; padding:5px 12px;
+    font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--ink);
+    cursor:pointer; white-space:nowrap;
+  }
+  .month-dropdown-item:hover{background:var(--bg-alt);}
+  .month-dropdown-item input[type=checkbox]{margin:0; cursor:pointer;}
+  .month-dropdown-item.all-item{border-bottom:1px solid var(--rule); margin-bottom:4px; padding-bottom:8px;}
+  .month-dropdown-hint{font-size:11.5px; color:var(--ink-soft); font-style:italic; margin-top:6px;}
   .chip{
     background:var(--paper-dim); border:1px solid var(--rule); color:var(--ink);
     padding:5px 12px; border-radius:14px; font-size:12px; cursor:pointer;
@@ -250,6 +267,8 @@
     .filters .f{width:100%;}
     .filters input[type=text], .filters input.amt, .filters select, .filters input[type=date], .filters input[type=number]{width:100%;}
     .filters button{width:100%;}
+    .month-dropdown{width:100%;}
+    .month-dropdown-btn{width:100%;}
     table{font-size:11.5px;}
     thead th{padding:6px 6px;}
     tbody td{padding:6px 6px;}
@@ -264,7 +283,6 @@
 <body>
 <div id="loadingOverlay" class="loading-overlay">
   <div class="loading-box">
-    <img src="icon_libro_mastro_512.png" alt="" style="width:48px; height:48px; margin-bottom:8px;">
     <div class="loading-spinner"></div>
     <div class="lb-title">Libro Mastro</div>
     <div class="lb-sub" id="loadingLabel">Caricamento...</div>
@@ -763,24 +781,51 @@
     const row = document.getElementById('monthsRow');
     const months = monthsPresent();
     if(months.length===0){ row.innerHTML = ''; return; }
-    const size = 1;
-    const options = ['<option value="__all__"' + (activeMonths.size===0 ? ' selected' : '') + '>Tutti i mesi</option>']
-      .concat(months.map(m=>`<option value="${m}"${activeMonths.has(m) ? ' selected' : ''}>${m}</option>`));
-    row.innerHTML = '<div class="month-select-wrap">' +
-      '<select class="month-select" id="monthSelect" multiple size="' + size + '">' + options.join('') + '</select>' +
-      '<span class="month-select-hint">seleziona i mesi da confrontare — Ctrl/⌘+clic per più di uno; nessuna selezione o "Tutti i mesi" = tutto lo storico</span>' +
+    const allSelected = activeMonths.size === 0;
+    const selCount = activeMonths.size;
+    const btnLabel = allSelected ? 'Tutti i mesi' : (selCount === 1 ? Array.from(activeMonths)[0] : selCount + ' mesi selezionati');
+    row.innerHTML =
+      '<div class="month-dropdown">' +
+        '<button class="month-dropdown-btn" id="monthDropdownBtn">' + btnLabel + '</button>' +
+        '<div class="month-dropdown-panel" id="monthDropdownPanel">' +
+          '<label class="month-dropdown-item all-item">' +
+            '<input type="checkbox" id="monthAllCheck" ' + (allSelected ? 'checked' : '') + '> Tutti i mesi' +
+          '</label>' +
+          months.map(m => {
+            const checked = activeMonths.has(m) ? 'checked' : '';
+            return '<label class="month-dropdown-item"><input type="checkbox" class="month-check" value="' + m + '" ' + checked + '> ' + m + '</label>';
+          }).join('') +
+        '</div>' +
+        '<div class="month-dropdown-hint">seleziona i mesi da confrontare</div>' +
       '</div>';
-    const sel = document.getElementById('monthSelect');
-    sel.addEventListener('change', ()=>{
-      const vals = Array.from(sel.selectedOptions).map(o=>o.value);
-      activeMonths.clear();
-      if(!vals.includes('__all__')){
-        vals.forEach(v=>{ if(v!=='__all__') activeMonths.add(v); });
+    const btn = document.getElementById('monthDropdownBtn');
+    const panel = document.getElementById('monthDropdownPanel');
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      panel.classList.toggle('open');
+    });
+    document.getElementById('monthAllCheck').addEventListener('change', (e)=>{
+      if(e.target.checked){
+        activeMonths.clear();
+      } else {
+        months.forEach(m => activeMonths.add(m));
       }
       renderMonthChips();
       renderAll();
     });
+    panel.querySelectorAll('.month-check').forEach(cb => {
+      cb.addEventListener('change', ()=>{
+        if(cb.checked) activeMonths.add(cb.value); else activeMonths.delete(cb.value);
+        renderMonthChips();
+        renderAll();
+      });
+    });
   }
+
+  document.addEventListener('click', ()=>{
+    const panel = document.getElementById('monthDropdownPanel');
+    if(panel) panel.classList.remove('open');
+  });
 
   function populateCategoryFilter(){
     const cats = Array.from(new Set(all.map(t=>t.category_label))).sort();
