@@ -6,7 +6,8 @@
 <title>Libro Mastro — Analisi Transazioni</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="icon" type="image/png" href="/icon_libro_mastro_512.png" />
+<link rel="apple-touch-icon" href="/icon_libro_mastro_1024.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600;700&family=Spectral+SC:wght@600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -249,6 +250,8 @@
     .filters .f{width:100%;}
     .filters input[type=text], .filters input.amt, .filters select, .filters input[type=date], .filters input[type=number]{width:100%;}
     .filters button{width:100%;}
+    .month-select-wrap{flex-direction:column; align-items:stretch;}
+    .month-select{width:100%;}
     table{font-size:11.5px;}
     thead th{padding:6px 6px;}
     tbody td{padding:6px 6px;}
@@ -264,6 +267,7 @@
 
 <div id="loginGate" style="position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:1000; padding:20px;">
   <div style="background:var(--paper); border-radius:4px; padding:32px 30px; max-width:340px; width:100%; box-shadow:0 12px 30px rgba(0,0,0,0.4); text-align:center;">
+    <img src="/splash_libro_mastro.png" alt="Libro Mastro" style="max-width:180px; height:auto; margin-bottom:16px;">
     <div style="font-family:'Spectral SC', serif; font-size:20px; color:var(--ink); margin-bottom:6px;">Libro Mastro</div>
     <div style="font-family:'Spectral', serif; font-style:italic; color:var(--ink-soft); font-size:13px; margin-bottom:20px;">Accesso privato — inserisci il tuo codice</div>
     <input type="password" id="loginPasscodeInput" placeholder="Codice d'accesso" autocomplete="current-password"
@@ -275,6 +279,7 @@
 
 <div id="loadingOverlay" class="loading-overlay">
   <div class="loading-box">
+    <img src="/icon_libro_mastro_512.png" alt="" style="width:48px; height:48px; margin-bottom:8px;">
     <div class="loading-spinner"></div>
     <div class="lb-title">Libro Mastro</div>
     <div class="lb-sub" id="loadingLabel">Caricamento...</div>
@@ -811,7 +816,7 @@
     const row = document.getElementById('monthsRow');
     const months = monthsPresent();
     if(months.length===0){ row.innerHTML = ''; return; }
-    const size = 1;
+    const size = Math.min(months.length + 1, 10);
     const options = ['<option value="__all__"' + (activeMonths.size===0 ? ' selected' : '') + '>Tutti i mesi</option>']
       .concat(months.map(m=>`<option value="${m}"${activeMonths.has(m) ? ' selected' : ''}>${m}</option>`));
     row.innerHTML = '<div class="month-select-wrap">' +
@@ -1318,7 +1323,12 @@
     if(field==='amount') t.amount = parseFloat(el.value)||0;
     else if(field==='date'){ t.date = el.value; t.month = (el.value||'').slice(0,7); }
     else t[field] = el.value;
-    await persistAll(oldMonths);
+    showLoading('Salvataggio modifiche...');
+    try{
+      await persistAll(oldMonths);
+    }finally{
+      hideLoading();
+    }
     renderMonthChips();
     renderStats();
     renderCatChart();
@@ -1352,10 +1362,15 @@
   }
 
   async function doDeleteRow(id){
-    const oldMonths = monthsPresent();
-    all = all.filter(t=>t.transaction_id!==id);
-    selected.delete(id);
-    await persistAll(oldMonths);
+    showLoading('Eliminazione transazione...');
+    try{
+      const oldMonths = monthsPresent();
+      all = all.filter(t=>t.transaction_id!==id);
+      selected.delete(id);
+      await persistAll(oldMonths);
+    }finally{
+      hideLoading();
+    }
     renderMonthChips();
     renderAll();
   }
@@ -1421,7 +1436,12 @@
         const d = recurringDefs.find(x=>x.id===cb.dataset.id);
         if(!d) return;
         d.active = cb.checked;
-        await saveRecurringDef(d);
+        showLoading('Aggiornamento ricorrenza...');
+        try{
+          await saveRecurringDef(d);
+        }finally{
+          hideLoading();
+        }
       });
     });
     body.querySelectorAll('.recurring-del').forEach(btn=>{
@@ -1447,15 +1467,22 @@
   }
 
   async function doDeleteRecurring(id){
-    recurringDefs = recurringDefs.filter(d=>d.id!==id);
-    await deleteRecurringDef(id);
-    // rimuove anche le transazioni già generate da questa ricorrenza, per evitare doppioni orfani
-    const prefix = 'recurring-' + id + '-';
-    const hadLinked = all.some(t=>t.transaction_id.startsWith(prefix));
+    let hadLinked = false;
+    showLoading('Eliminazione ricorrenza...');
+    try{
+      recurringDefs = recurringDefs.filter(d=>d.id!==id);
+      await deleteRecurringDef(id);
+      const prefix = 'recurring-' + id + '-';
+      hadLinked = all.some(t=>t.transaction_id.startsWith(prefix));
+      if(hadLinked){
+        const oldMonths = monthsPresent();
+        all = all.filter(t=>!t.transaction_id.startsWith(prefix));
+        await persistAll(oldMonths);
+      }
+    }finally{
+      hideLoading();
+    }
     if(hadLinked){
-      const oldMonths = monthsPresent();
-      all = all.filter(t=>!t.transaction_id.startsWith(prefix));
-      await persistAll(oldMonths);
       renderMonthChips();
       renderAll();
     } else {
@@ -1580,7 +1607,12 @@
     });
     const status = document.getElementById('ioStatus');
     if(addedCount>0){
-      await persistAll(oldMonths);
+      showLoading('Generazione transazioni ricorrenti...');
+      try{
+        await persistAll(oldMonths);
+      }finally{
+        hideLoading();
+      }
       renderMonthChips();
       renderAll();
       status.textContent = addedCount + ' transazioni ricorrenti generate.';
@@ -1624,9 +1656,14 @@
       id, name, category_label, flow, amount: Math.abs(amount), frequency, day, month,
       active: existing ? existing.active : true
     };
-    await saveRecurringDef(def);
-    if(existing) Object.assign(existing, def);
-    else recurringDefs.push(def);
+    showLoading('Salvataggio ricorrenza...');
+    try{
+      await saveRecurringDef(def);
+      if(existing) Object.assign(existing, def);
+      else recurringDefs.push(def);
+    }finally{
+      hideLoading();
+    }
     editingRecurringId = null;
     document.getElementById('recurringForm').style.display = 'none';
     document.getElementById('recurringFormError').textContent = '';
@@ -1675,7 +1712,12 @@
       category_label, flow, amount, counterparty:''
     };
     all.push(t);
-    await persistAll(oldMonths);
+    showLoading('Salvataggio transazione...');
+    try{
+      await persistAll(oldMonths);
+    }finally{
+      hideLoading();
+    }
     document.getElementById('mName').value = '';
     document.getElementById('mCategory').value = '';
     document.getElementById('mAmount').value = '';
@@ -1787,10 +1829,15 @@
     btn.textContent = 'Elimina selezionate';
     btn.style.background = '';
     btn.style.color = '';
-    const oldMonths = monthsPresent();
-    all = all.filter(t=>!selected.has(t.transaction_id));
-    selected.clear();
-    await persistAll(oldMonths);
+    showLoading('Eliminazione transazioni selezionate...');
+    try{
+      const oldMonths = monthsPresent();
+      all = all.filter(t=>!selected.has(t.transaction_id));
+      selected.clear();
+      await persistAll(oldMonths);
+    }finally{
+      hideLoading();
+    }
     renderMonthChips();
     renderAll();
   });
@@ -1824,15 +1871,18 @@
     clearTimeout(link._resetTimer);
     link.dataset.confirm = '0';
     link.textContent = 'cancella tutti i dati salvati';
+    showLoading('Cancellazione di tutti i dati...');
     try{
       const res = await kvList('month:');
       if(res && res.keys){
         for(const k of res.keys){ await kvDelete(k); }
       }
-    }catch(err){}
-    all = []; activeMonths.clear(); selected.clear();
-    document.getElementById('uploadStatus').textContent = 'Dati cancellati. Carica un nuovo export per iniziare.';
-    renderMonthChips(); renderAll();
+      all = []; activeMonths.clear(); selected.clear();
+      document.getElementById('uploadStatus').textContent = 'Dati cancellati. Carica un nuovo export per iniziare.';
+      renderMonthChips(); renderAll();
+    }finally{
+      hideLoading();
+    }
   });
 
   document.getElementById('btnExportData').addEventListener('click', ()=>{
