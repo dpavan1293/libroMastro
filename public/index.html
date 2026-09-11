@@ -6,6 +6,7 @@
 <title>Libro Mastro — Analisi Transazioni</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400;500;600;700&family=Spectral+SC:wght@600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -1369,7 +1370,7 @@
   }
 
   function renderAll(){
-    renderRecurringTable();
+    try{ renderRecurringTable(); }catch(e){ console.error('renderRecurringTable:', e); }
     if(all.length===0){
       document.getElementById('mainContent').style.display = 'none';
       document.getElementById('emptyState').style.display = 'block';
@@ -1377,13 +1378,13 @@
     }
     document.getElementById('mainContent').style.display = 'block';
     document.getElementById('emptyState').style.display = 'none';
-    renderStats();
-    renderCatChart();
-    renderTrendChart();
-    renderSavingsCharts();
-    renderForecastChart();
-    populateCategoryFilter();
-    renderTable();
+    try{ renderStats(); }catch(e){ console.error('renderStats:', e); }
+    try{ renderCatChart(); }catch(e){ console.error('renderCatChart:', e); }
+    try{ renderTrendChart(); }catch(e){ console.error('renderTrendChart:', e); }
+    try{ renderSavingsCharts(); }catch(e){ console.error('renderSavingsCharts:', e); }
+    try{ renderForecastChart(); }catch(e){ console.error('renderForecastChart:', e); }
+    try{ populateCategoryFilter(); }catch(e){ console.error('populateCategoryFilter:', e); }
+    try{ renderTable(); }catch(e){ console.error('renderTable:', e); }
   }
 
   const MONTH_NAMES_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
@@ -1707,6 +1708,9 @@
       renderMonthChips();
       renderAll();
       if(recurringDefs.some(d=>d.active)) await generateRecurringTransactions();
+    }catch(err){
+      console.error('Import error:', err);
+      document.getElementById('uploadStatus').textContent = 'Errore importazione: ' + (err.message || err);
     }finally{
       hideLoading();
     }
