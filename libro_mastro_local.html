@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="it">
 <head>
 <meta charset="UTF-8">
@@ -352,10 +352,13 @@
             <option value="10">Ottobre</option><option value="11">Novembre</option><option value="12">Dicembre</option>
           </select>
         </div>
+        <div class="f"><label>Data inizio (facoltativa)</label><input type="date" id="rStart"></div>
+        <div class="f"><label>Data fine (facoltativa)</label><input type="date" id="rEnd"></div>
         <div class="f"><button id="btnSaveRecurring">Salva</button></div>
         <div class="f"><button id="btnCancelRecurring" class="ghost">Annulla</button></div>
         <div class="f" style="justify-content:center;"><span id="recurringFormError" style="color:var(--rust); font-size:11.5px;"></span></div>
       </div>
+      <div class="small-note" style="margin:10px 0 0;">Inizio e fine sono opzionali: vuoto = nessun limite. La ricorrenza viene generata solo nei mesi già presenti nel registro (o nel mese corrente) la cui data cade dentro il periodo; i mesi non ancora caricati non vengono inventati. Quando modifichi una regola esistente, tutte le transazioni già generate da quella regola vengono allineate ai nuovi parametri: quelle fuori periodo sono rimosse, quelle dentro periodo mancanti vengono create, le altre vengono aggiornate.</div>
     </div>
 
     <div class="table-scroll" style="max-height:260px;">
@@ -363,7 +366,7 @@
         <thead>
           <tr>
             <th>Descrizione</th><th>Categoria</th><th>Tipo</th><th style="text-align:right;">Importo</th>
-            <th>Frequenza</th><th>Attiva</th><th style="width:30px;"></th>
+            <th>Frequenza</th><th>Periodo</th><th>Attiva</th><th style="width:30px;"></th>
           </tr>
         </thead>
         <tbody id="recurringBody"></tbody>
@@ -521,6 +524,48 @@
       </div>
     </div>
 
+    <div class="section" id="yearSection">
+      <div class="section-title">
+        <span>Panoramica annuale <span id="yearLabel">—</span></span>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button id="btnToggleYear" class="io-btn-solid">▾ Nascondi</button>
+        </div>
+      </div>
+      <div id="yearContent">
+        <div class="stamp-row" style="margin-bottom:6px;">
+          <div class="stamp"><div class="stamp-label">Entrate da inizio anno</div><div class="stamp-value pos" id="yIncomeActual">—</div></div>
+          <div class="stamp"><div class="stamp-label">Uscite da inizio anno</div><div class="stamp-value neg" id="yExpenseActual">—</div></div>
+          <div class="stamp"><div class="stamp-label">Saldo ad oggi</div><div class="stamp-value neutral" id="yBalanceActual">—</div></div>
+        </div>
+        <div class="small-note" id="yActualNote" style="margin:0 0 20px;"></div>
+
+        <div class="section-title" style="font-size:13px;">Ricorrenti previste fino a fine anno</div>
+        <div id="yearRecurringWrap"></div>
+
+        <div class="section-title" style="font-size:13px; margin-top:20px;">Entrate e uscite previste (inserimento manuale)</div>
+        <div class="filters" style="margin-bottom:10px;">
+          <div class="f"><label>Tipo</label>
+            <select id="ypFlow">
+              <option value="expense" selected>Uscita</option>
+              <option value="income">Entrata</option>
+            </select>
+          </div>
+          <div class="f"><label>Descrizione</label><input type="text" id="ypName" placeholder="es. Assicurazione auto"></div>
+          <div class="f"><label>Importo</label><input type="number" step="0.01" class="amt" id="ypAmount" placeholder="0.00"></div>
+          <div class="f"><button id="btnAddYearPlan">Aggiungi</button></div>
+          <div class="f" style="justify-content:center;"><span id="yearPlanError" style="color:var(--rust); font-size:11.5px;"></span></div>
+        </div>
+        <div id="yearPlanList"></div>
+
+        <div class="stamp-row" style="margin-top:20px; margin-bottom:0;">
+          <div class="stamp"><div class="stamp-label">Entrate previste (anno intero)</div><div class="stamp-value pos" id="yIncomeTotal">—</div></div>
+          <div class="stamp"><div class="stamp-label">Uscite previste (anno intero)</div><div class="stamp-value neg" id="yExpenseTotal">—</div></div>
+          <div class="stamp balance"><div class="stamp-label">Saldo previsto a fine anno</div><div class="stamp-value" id="yBalanceTotal">—</div></div>
+        </div>
+        <div class="small-note" id="yTotalNote" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
     <div class="section" id="forecastSection">
       <div class="section-title">
         <span>Previsioni di crescita del patrimonio</span>
@@ -578,9 +623,11 @@
   let selected = new Set();   // transaction_id of selected rows
   let sortKey = 'date', sortDir = -1;
   let trendChart, catChart, savingsChart, savingsHistChart, forecastChart;
-  let savingsOpen = true, forecastOpen = false;
+  let savingsOpen = true, forecastOpen = false, yearOpen = true;
   let catPeriod = 'all', trendPeriod = 'all', savingsPeriod = 'all';
   let excludedCategories = new Set();
+  let yearPlan = [];        // entrate e uscite previste inserite a mano per l'anno in corso
+  let yearPlanYear = null;  // anno a cui appartiene yearPlan
 
   const eur = n => (n<0?'-':'') + '€' + Math.abs(n).toLocaleString('it-IT',{minimumFractionDigits:2, maximumFractionDigits:2});
 
@@ -747,7 +794,7 @@
     for(const k of keys){
       try{
         const res = await kvGet(k);
-        if(res && res.value) acc.push(JSON.parse(res.value));
+        if(res && res.value) acc.push(normalizeRecurringDef(JSON.parse(res.value)));
       }catch(e){}
     }
     return acc;
@@ -759,6 +806,327 @@
 
   async function deleteRecurringDef(id){
     await kvDelete('recurring:'+id);
+  }
+
+  // --- Ricorrenze: normalizzazione e generazione -------------------------
+  function normDay(v){
+    return (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) ? v : '';
+  }
+
+  // riempie i campi mancanti (backup vecchi, dati editati a mano) così il
+  // resto del codice può assumere sempre la stessa forma
+  function normalizeRecurringDef(d){
+    d = d || {};
+    return {
+      id: d.id,
+      name: d.name || '(senza nome)',
+      category_label: d.category_label || 'Manuale',
+      flow: d.flow === 'expense' ? 'expense' : 'income',
+      amount: Math.abs(parseFloat(d.amount)) || 0,
+      frequency: d.frequency === 'yearly' ? 'yearly' : 'monthly',
+      day: Math.min(Math.max(parseInt(d.day, 10) || 1, 1), 28),
+      month: parseInt(d.month, 10) || 1,
+      startDate: normDay(d.startDate),
+      endDate: normDay(d.endDate),
+      active: d.active !== false
+    };
+  }
+
+  function recurringPrefix(id){ return 'recurring-' + id + '-'; }
+
+  function recurringDate(def, m){
+    return m + '-' + pad2(Math.min(Math.max(parseInt(def.day, 10) || 1, 1), 28));
+  }
+
+  // il mese è eleggibile solo se rispetta frequenza annuale e finestra date
+  function isRecurringMonth(def, m){
+    if(def.frequency === 'yearly' && parseInt(def.month, 10) !== parseInt(String(m).split('-')[1], 10)) return false;
+    const date = recurringDate(def, m);
+    if(def.startDate && date < def.startDate) return false;
+    if(def.endDate && date > def.endDate) return false;
+    return true;
+  }
+
+  function buildRecurringTxn(def, m){
+    return {
+      transaction_id: recurringPrefix(def.id) + m,
+      date: recurringDate(def, m),
+      month: m,
+      name: def.name,
+      description: 'Ricorrente',
+      type: 'RECURRING',
+      category_label: def.category_label,
+      flow: def.flow,
+      amount: def.flow === 'income' ? Math.abs(def.amount) : -Math.abs(def.amount),
+      counterparty: ''
+    };
+  }
+
+  // Allinea le transazioni già generate da una regola ai suoi parametri:
+  // rimuove quelle fuori periodo, crea quelle mancanti, aggiorna le altre.
+  // Il flag "Attiva" non interviene: resta com'è oggi, un controllo di
+  // "Genera transazioni mancanti" (così disattivare non cancella nulla).
+  // Restituisce un conteggio per il messaggio di stato.
+  async function syncRecurringForDef(def){
+    const prefix = recurringPrefix(def.id);
+    const wanted = new Map();
+    monthsToGenerateFor().forEach(m=>{
+      if(isRecurringMonth(def, m)) wanted.set(prefix + m, buildRecurringTxn(def, m));
+    });
+    const oldMonths = monthsPresent();
+    let removed = 0;
+    all = all.filter(t=>{
+      if(!String(t.transaction_id).startsWith(prefix)) return true;
+      if(wanted.has(t.transaction_id)) return true;
+      removed++;
+      return false;
+    });
+    let added = 0, updated = 0;
+    wanted.forEach((txn, id)=>{
+      const i = all.findIndex(x=>x.transaction_id === id);
+      if(i < 0){ all.push(txn); added++; return; }
+      const prev = all[i];
+      if(prev.date !== txn.date || prev.name !== txn.name || prev.category_label !== txn.category_label
+         || prev.flow !== txn.flow || prev.amount !== txn.amount) updated++;
+      all[i] = txn;
+    });
+    await persistAll(oldMonths);
+    return { added, updated, removed };
+  }
+
+  // --- Panoramica annuale ------------------------------------------------
+  function currentYear(){ return String(new Date().getFullYear()); }
+  function todayISO(){
+    const d = new Date();
+    return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate());
+  }
+
+  function normalizeYearPlanItem(r){
+    if(!r || !r.name) return null;
+    const amt = Math.abs(parseFloat(r.amount) || 0);
+    if(!amt) return null;
+    return {
+      id: r.id || ('yp-' + Date.now() + '-' + Math.random().toString(36).slice(2,8)),
+      name: r.name,
+      amount: amt,
+      // i dati salvati prima di questa funzione non avevano il flusso: erano uscite
+      flow: (r.flow === 'income') ? 'income' : 'expense'
+    };
+  }
+  async function loadYearPlan(y){
+    try{
+      const res = await kvGet('yearplan:' + y);
+      if(res && res.value){
+        const parsed = JSON.parse(res.value);
+        if(Array.isArray(parsed)) return parsed.map(normalizeYearPlanItem).filter(Boolean);
+      }
+    }catch(e){}
+    return [];
+  }
+  async function saveYearPlan(){
+    await kvSet('yearplan:' + yearPlanYear, JSON.stringify(yearPlan));
+  }
+  // ricarica se nel frattempo si è cambiato anno (es. scheda tenuta aperta a Capodanno)
+  async function ensureYearPlan(){
+    const y = currentYear();
+    if(yearPlanYear === y) return;
+    yearPlanYear = y;
+    yearPlan = await loadYearPlan(y);
+  }
+
+  // date in cui la regola ricorrente scatta dopo oggi ed entro fine anno
+  function recurringDatesLeftInYear(def, y, today){
+    const out = [];
+    for(let mo = 1; mo <= 12; mo++){
+      if(def.frequency === 'yearly' && parseInt(def.month, 10) !== mo) continue;
+      const date = recurringDate(def, y + '-' + pad2(mo));
+      if(def.startDate && date < def.startDate) continue;
+      if(def.endDate && date > def.endDate) continue;
+      if(date <= today) continue;
+      out.push(date);
+    }
+    return out;
+  }
+
+  // ricorrenti attese entro fine anno, aggregate per nome
+  function projectRecurringInYear(y, today){
+    const groups = new Map();
+    recurringDefs.forEach(raw=>{
+      if(!raw || !raw.active) return;
+      const d = normalizeRecurringDef(raw);
+      const dates = recurringDatesLeftInYear(d, y, today);
+      if(!dates.length) return;
+      const key = d.name.trim().toLowerCase() + '|' + d.flow;
+      let g = groups.get(key);
+      if(!g){
+        g = { name: d.name, category_label: d.category_label, flow: d.flow, count: 0, total: 0, units: new Set(), dates: [] };
+        groups.set(key, g);
+      }
+      // ogni regola porta il suo importo: non basta moltiplicare un unico
+      // importo per le occorrenze sommate, altrimenti regole omonime con
+      // importi diversi darebbero un totale falso
+      const unit = Math.abs(d.amount);
+      g.count += dates.length;
+      g.total += dates.length * unit;
+      g.units.add(unit);
+      g.dates = g.dates.concat(dates).sort();
+    });
+    return Array.from(groups.values()).map(g=>({
+      name: g.name,
+      category_label: g.category_label,
+      flow: g.flow,
+      count: g.count,
+      total: g.total,
+      unitLabel: (g.units.size === 1) ? (' × ' + eur(Array.from(g.units)[0])) : ' (importi diversi)',
+      first: g.dates[0],
+      last: g.dates[g.dates.length-1]
+    })).sort((a,b)=> b.total - a.total);
+  }
+
+  function renderYearSection(){
+    if(!yearOpen) return; // non renderizzare mentre è chiuso
+    const y = currentYear();
+    const today = todayISO();
+    if(yearPlanYear !== y){
+      yearPlan = [];
+      ensureYearPlan().then(()=>renderYearSection());
+    }
+    document.getElementById('yearLabel').textContent = y;
+
+    // trascorso: solo ciò che è già avvenuto (evita di contare due volte una
+    // ricorrente già generata ma datata nel futuro, es. stipendio del 27)
+    const elapsed = all.filter(t=> t.month && t.month.slice(0,4) === y && t.date && t.date <= today);
+    const incActual = elapsed.filter(t=>t.flow==='income').reduce((s,t)=>s + t.amount, 0);
+    const expActual = Math.abs(elapsed.filter(t=>t.flow==='expense').reduce((s,t)=>s + t.amount, 0));
+    const invActual = Math.abs(elapsed.filter(t=>t.flow==='invest').reduce((s,t)=>s + t.amount, 0));
+
+    document.getElementById('yIncomeActual').textContent = eur(incActual);
+    document.getElementById('yExpenseActual').textContent = eur(expActual);
+    const balActual = incActual - expActual;
+    const balEl = document.getElementById('yBalanceActual');
+    balEl.textContent = eur(balActual);
+    balEl.className = 'stamp-value ' + (balActual >= 0 ? 'pos' : 'neg');
+    document.getElementById('yActualNote').textContent =
+      'Transcorso dal 1° gennaio al ' + today + '.'
+      + (invActual ? (' Nell\'anno ci sono anche ' + eur(invActual) + ' di investimenti, esclusi dal saldo qui sopra.') : '');
+
+    // previste: ricorrenti attive + voci manuali
+    const rows = projectRecurringInYear(y, today);
+    const sumInc = rows.filter(r=>r.flow==='income').reduce((s,r)=>s + r.total, 0);
+    const sumExp = rows.filter(r=>r.flow==='expense').reduce((s,r)=>s + r.total, 0);
+    const recWrap = document.getElementById('yearRecurringWrap');
+    if(rows.length === 0){
+      recWrap.innerHTML = '<div class="empty-note">Nessuna ricorrenza attiva cade nel restante periodo dell\'anno. Imposta una ricorrenza nella sezione "Transazioni ricorrenti" per vederla qui.</div>';
+    } else {
+      recWrap.innerHTML = rows.map(r=>{
+        const cls = r.flow==='income' ? 'pos' : 'neg';
+        const quando = (r.count === 1) ? r.first : (r.first + ' → ' + r.last);
+        return '<div class="detected-row">'+
+          '<div class="di-main">'+
+            '<span><b>' + escAttr(r.name) + '</b> <span class="tag">' + escAttr(r.category_label) + '</span> <span class="tag">' + (r.flow==='income' ? 'entrata' : 'uscita') + '</span></span>'+
+            '<span class="di-meta">' + r.count + (r.count === 1 ? ' occorrenza' : ' occorrenze') + r.unitLabel + ' · ' + quando + '</span>'+
+          '</div>'+
+          '<div class="amt ' + cls + '" style="font-weight:600; white-space:nowrap;">' + eur(r.flow==='income' ? r.total : -r.total) + '</div>'+
+        '</div>';
+      }).join('');
+    }
+
+    const listEl = document.getElementById('yearPlanList');
+    if(!yearPlan.length){
+      listEl.innerHTML = '<div class="small-note" style="margin:0;">Nessuna entrata o uscita prevista inserita a mano. Usa i campi sopra per aggiungerne (es. un\'assicurazione o un\'imposta che paghi una volta sola entro l\'anno, oppure un rimborso o un bonus che riceverai).</div>';
+    } else {
+      listEl.innerHTML = yearPlan.map(r=>{
+        const amt = Math.abs(parseFloat(r.amount) || 0);
+        const inc = (r.flow === 'income');
+        const id = escAttr(r.id);
+        return '<div class="detected-row" data-id="' + id + '">'+
+          '<div class="di-main"><span><b>' + escAttr(r.name) + '</b> <span class="tag">' + (inc ? 'entrata' : 'uscita') + '</span></span>'+
+          '<span class="di-meta">' + (inc ? 'entrata' : 'uscita') + ' prevista per il ' + y + '</span></div>'+
+          '<div style="display:flex; align-items:center; gap:10px;">'+
+            '<span class="amt ' + (inc ? 'pos' : 'neg') + '" style="font-weight:600; white-space:nowrap;">' + eur(inc ? amt : -amt) + '</span>'+
+            '<button class="del-btn yplan-del" data-id="' + id + '" title="Elimina">✕</button>'+
+          '</div>'+
+        '</div>';
+      }).join('');
+      listEl.querySelectorAll('.yplan-del').forEach(btn=>{
+        btn.addEventListener('click', onDeleteYearPlan);
+      });
+    }
+
+    const manualInc = yearPlan.filter(r=>r.flow === 'income').reduce((s,r)=>s + Math.abs(parseFloat(r.amount) || 0), 0);
+    const manualExp = yearPlan.filter(r=>r.flow !== 'income').reduce((s,r)=>s + Math.abs(parseFloat(r.amount) || 0), 0);
+    const incomeTotal = incActual + sumInc + manualInc;
+    const expenseTotal = expActual + sumExp + manualExp;
+    document.getElementById('yIncomeTotal').textContent = eur(incomeTotal);
+    document.getElementById('yExpenseTotal').textContent = eur(expenseTotal);
+    const totBal = document.getElementById('yBalanceTotal');
+    totBal.textContent = eur(incomeTotal - expenseTotal);
+    totBal.className = 'stamp-value ' + ((incomeTotal - expenseTotal) >= 0 ? 'pos' : 'neg');
+    document.getElementById('yTotalNote').textContent =
+      'Da oggi a fine anno restano previsti ' + eur(sumInc) + ' di entrate ricorrenti e ' + eur(sumExp)
+      + ' di uscite ricorrenti, più ' + eur(manualInc) + ' di entrate e ' + eur(manualExp)
+      + ' di uscite inserite a mano. Il totale somma quanto già avvenuto con quanto resta da incassare e da pagare.';
+  }
+
+  async function addYearPlanItem(){
+    const name = document.getElementById('ypName').value.trim();
+    const amount = Math.abs(parseFloat(document.getElementById('ypAmount').value));
+    const flow = document.getElementById('ypFlow').value === 'income' ? 'income' : 'expense';
+    const errEl = document.getElementById('yearPlanError');
+    errEl.textContent = '';
+    if(!name || !amount || isNaN(amount)){
+      errEl.textContent = 'Compila descrizione e importo.';
+      return;
+    }
+    await ensureYearPlan();
+    const item = normalizeYearPlanItem({ name, amount, flow });
+    yearPlan.push(item);
+    try{
+      await saveYearPlan();
+    }catch(err){
+      yearPlan = yearPlan.filter(r=>r.id !== item.id);
+      errEl.textContent = 'Salvataggio non riuscito: ' + (err.message || err);
+      return;
+    }
+    document.getElementById('ypName').value = '';
+    document.getElementById('ypAmount').value = '';
+    document.getElementById('ypName').focus();
+    renderYearSection();
+  }
+
+  function onDeleteYearPlan(e){
+    const btn = e.currentTarget;
+    const id = btn.dataset.id;
+    if(btn.dataset.confirm === '1'){
+      clearTimeout(btn._resetTimer);
+      removeYearPlanItem(id);
+      return;
+    }
+    btn.dataset.confirm = '1';
+    btn.textContent = '✓';
+    btn.title = 'Clicca di nuovo per confermare l\'eliminazione';
+    btn.style.background = 'var(--rust)';
+    btn.style.color = '#fff';
+    btn._resetTimer = setTimeout(()=>{
+      btn.dataset.confirm = '0';
+      btn.textContent = '✕';
+      btn.title = 'Elimina';
+      btn.style.background = '';
+      btn.style.color = '';
+    }, 3000);
+  }
+
+  async function removeYearPlanItem(id){
+    await ensureYearPlan();
+    const prev = yearPlan;
+    yearPlan = yearPlan.filter(r=>r.id !== id);
+    try{
+      await saveYearPlan();
+    }catch(err){
+      yearPlan = prev;
+      document.getElementById('yearPlanError').textContent = 'Eliminazione non riuscita: ' + (err.message || err);
+    }
+    renderYearSection();
   }
 
   function monthsPresent(){
@@ -1321,6 +1689,7 @@
     renderCatChart();
     renderTrendChart();
     renderSavingsCharts();
+    renderYearSection();
     renderForecastChart();
     populateCategoryFilter();
     renderTable();
@@ -1379,6 +1748,7 @@
     renderCatChart();
     renderTrendChart();
     renderSavingsCharts();
+    renderYearSection();
     renderForecastChart();
     populateCategoryFilter();
     renderTable();
@@ -1389,23 +1759,28 @@
   function renderRecurringTable(){
     const body = document.getElementById('recurringBody');
     if(!body) return;
+    recurringDefs = recurringDefs.map(normalizeRecurringDef);
     body.innerHTML = recurringDefs.map(d=>{
       const amtClass = d.flow==='income' ? 'pos' : 'neg';
       const shownAmount = d.flow==='income' ? Math.abs(d.amount) : -Math.abs(d.amount);
       const freqLabel = d.frequency==='yearly'
         ? ('Annuale — ' + (MONTH_NAMES_IT[(parseInt(d.month)||1)-1]) + ', gg ' + d.day)
         : ('Mensile — gg ' + d.day);
+      const periodLabel = (d.startDate || d.endDate)
+        ? ((d.startDate || 'inizio') + ' → ' + (d.endDate || '∞'))
+        : 'senza limiti';
       const id = escAttr(d.id);
       return `<tr data-id="${id}">
-        <td class="rec-edit-trigger" style="cursor:pointer;">${d.name}</td>
-        <td class="rec-edit-trigger" style="cursor:pointer;"><span class="tag">${d.category_label}</span></td>
+        <td class="rec-edit-trigger" style="cursor:pointer;">${escAttr(d.name)}</td>
+        <td class="rec-edit-trigger" style="cursor:pointer;"><span class="tag">${escAttr(d.category_label)}</span></td>
         <td class="rec-edit-trigger" style="cursor:pointer;">${d.flow==='income'?'Entrata':'Uscita'}</td>
         <td class="amt ${amtClass} rec-edit-trigger" style="cursor:pointer;">${eur(shownAmount)}</td>
         <td class="rec-edit-trigger" style="cursor:pointer;">${freqLabel}</td>
+        <td class="rec-edit-trigger" style="cursor:pointer;">${periodLabel}</td>
         <td><input type="checkbox" class="recurringActive" data-id="${id}" ${d.active?'checked':''}></td>
         <td><button class="del-btn recurring-del" data-id="${id}">✕</button></td>
       </tr>`;
-    }).join('') || '<tr><td colspan="7" class="empty-note">Nessuna ricorrenza impostata. Aggiungi lo stipendio o un abbonamento con "+ Aggiungi ricorrente".</td></tr>';
+    }).join('') || '<tr><td colspan="8" class="empty-note">Nessuna ricorrenza impostata. Aggiungi lo stipendio o un abbonamento con "+ Aggiungi ricorrente".</td></tr>';
 
     body.querySelectorAll('.rec-edit-trigger').forEach(cell=>{
       cell.addEventListener('click', ()=>{
@@ -1447,7 +1822,7 @@
     recurringDefs = recurringDefs.filter(d=>d.id!==id);
     await deleteRecurringDef(id);
     // rimuove anche le transazioni già generate da questa ricorrenza, per evitare doppioni orfani
-    const prefix = 'recurring-' + id + '-';
+      const prefix = recurringPrefix(id);
     const hadLinked = all.some(t=>t.transaction_id.startsWith(prefix));
     if(hadLinked){
       const oldMonths = monthsPresent();
@@ -1463,7 +1838,7 @@
   function openRecurringForm(id){
     const form = document.getElementById('recurringForm');
     editingRecurringId = id || null;
-    const d = id ? recurringDefs.find(x=>x.id===id) : null;
+    const d = id ? normalizeRecurringDef(recurringDefs.find(x=>x.id===id)) : null;
     document.getElementById('rName').value = d ? d.name : '';
     document.getElementById('rCategory').value = d ? d.category_label : '';
     document.getElementById('rFlow').value = d ? d.flow : 'income';
@@ -1471,6 +1846,8 @@
     document.getElementById('rFrequency').value = d ? d.frequency : 'monthly';
     document.getElementById('rDay').value = d ? d.day : 1;
     document.getElementById('rMonth').value = d ? (d.month||1) : 1;
+    document.getElementById('rStart').value = d ? d.startDate : '';
+    document.getElementById('rEnd').value = d ? d.endDate : '';
     document.getElementById('rMonthWrap').style.display = (d && d.frequency==='yearly') ? 'flex' : 'none';
     document.getElementById('recurringFormError').textContent = '';
     form.style.display = 'block';
@@ -1486,6 +1863,8 @@
     document.getElementById('rFrequency').value = 'monthly';
     document.getElementById('rDay').value = seed.day || 1;
     document.getElementById('rMonth').value = 1;
+    document.getElementById('rStart').value = seed.startDate || '';
+    document.getElementById('rEnd').value = seed.endDate || '';
     document.getElementById('rMonthWrap').style.display = 'none';
     document.getElementById('recurringFormError').textContent = '';
     document.getElementById('recurringForm').scrollIntoView({behavior:'smooth', block:'center'});
@@ -1560,18 +1939,11 @@
     let addedCount = 0;
     recurringDefs.filter(d=>d.active).forEach(d=>{
       months.forEach(m=>{
-        const mo = parseInt(m.split('-')[1], 10);
-        if(d.frequency==='yearly' && parseInt(d.month,10)!==mo) return;
-        const day = Math.min(Math.max(parseInt(d.day,10)||1, 1), 28);
-        const date = m + '-' + pad2(day);
-        const txnId = 'recurring-' + d.id + '-' + m;
-        if(existingIds.has(txnId)) return;
-        const amount = d.flow==='income' ? Math.abs(d.amount) : -Math.abs(d.amount);
-        all.push({
-          transaction_id: txnId, date, month: m, name: d.name, description: 'Ricorrente',
-          type: 'RECURRING', category_label: d.category_label, flow: d.flow, amount, counterparty: ''
-        });
-        existingIds.add(txnId);
+        if(!isRecurringMonth(d, m)) return;
+        const txn = buildRecurringTxn(d, m);
+        if(existingIds.has(txn.transaction_id)) return;
+        all.push(txn);
+        existingIds.add(txn.transaction_id);
         addedCount++;
       });
     });
@@ -1609,25 +1981,52 @@
     const flow = document.getElementById('rFlow').value;
     const amount = parseFloat(document.getElementById('rAmount').value);
     const frequency = document.getElementById('rFrequency').value;
-    const day = parseInt(document.getElementById('rDay').value, 10) || 1;
-    const month = parseInt(document.getElementById('rMonth').value, 10) || 1;
+    const day = document.getElementById('rDay').value;
+    const month = document.getElementById('rMonth').value;
+    const startDate = normDay(document.getElementById('rStart').value);
+    const endDate = normDay(document.getElementById('rEnd').value);
+    const errEl = document.getElementById('recurringFormError');
+    errEl.textContent = '';
     if(!name || isNaN(amount) || amount===0){
-      document.getElementById('recurringFormError').textContent = 'Compila almeno descrizione e importo.';
+      errEl.textContent = 'Compila almeno descrizione e importo.';
+      return;
+    }
+    if(startDate && endDate && startDate > endDate){
+      errEl.textContent = 'La data di inizio non può essere successiva alla data di fine.';
       return;
     }
     const id = editingRecurringId || ('rec-' + Date.now() + '-' + Math.random().toString(36).slice(2,8));
     const existing = editingRecurringId ? recurringDefs.find(d=>d.id===editingRecurringId) : null;
-    const def = {
-      id, name, category_label, flow, amount: Math.abs(amount), frequency, day, month,
+    const def = normalizeRecurringDef({
+      id, name, category_label, flow, amount: Math.abs(amount), frequency, day, month, startDate, endDate,
       active: existing ? existing.active : true
-    };
-    await saveRecurringDef(def);
-    if(existing) Object.assign(existing, def);
-    else recurringDefs.push(def);
+    });
+    let syncInfo = null;
+    try{
+      await saveRecurringDef(def);
+      if(existing){
+        Object.assign(existing, def);
+        // la regola è cambiata: riallinea tutte le transazioni che genera
+        syncInfo = await syncRecurringForDef(existing);
+      } else {
+        recurringDefs.push(def);
+      }
+    }catch(err){
+      errEl.textContent = 'Salvataggio non riuscito: ' + (err.message || err);
+      return;
+    }
     editingRecurringId = null;
     document.getElementById('recurringForm').style.display = 'none';
-    document.getElementById('recurringFormError').textContent = '';
-    renderRecurringTable();
+    errEl.textContent = '';
+    if(syncInfo){
+      const parts = [];
+      if(syncInfo.added) parts.push(syncInfo.added + ' create');
+      if(syncInfo.updated) parts.push(syncInfo.updated + ' aggiornate');
+      if(syncInfo.removed) parts.push(syncInfo.removed + ' rimosse fuori periodo');
+      document.getElementById('ioStatus').textContent = 'Ricorrenza aggiornata — transazioni collegate: ' + (parts.length ? parts.join(', ') : 'nessuna variazione') + '.';
+      renderMonthChips();
+    }
+    renderAll();
     if(document.getElementById('detectedRecurringPanel').style.display==='block') renderDetectedRecurring();
   };
   document.getElementById('btnGenRecurring').addEventListener('click', generateRecurringTransactions);
@@ -1741,6 +2140,19 @@
     e.target.textContent = forecastOpen ? '▾ Nascondi' : '▸ Mostra';
     if(forecastOpen) renderForecastChart();
   };
+  document.getElementById('btnToggleYear').onclick = (e)=>{
+    yearOpen = !yearOpen;
+    document.getElementById('yearContent').style.display = yearOpen ? 'block' : 'none';
+    e.target.textContent = yearOpen ? '▾ Nascondi' : '▸ Mostra';
+    if(yearOpen) renderYearSection();
+  };
+  document.getElementById('btnAddYearPlan').addEventListener('click', addYearPlanItem);
+  document.getElementById('ypName').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter') document.getElementById('btnAddYearPlan').click();
+  });
+  document.getElementById('ypAmount').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter') document.getElementById('btnAddYearPlan').click();
+  });
   ['fcReturn','fcIncome','fcExpense','fcYears'].forEach(id=>{
     document.getElementById(id).addEventListener('input', ()=>{
       saveForecastSettings();
@@ -1823,19 +2235,28 @@
       if(res && res.keys){
         for(const k of res.keys){ await kvDelete(k); }
       }
-    }catch(err){}
-    all = []; activeMonths.clear(); selected.clear();
-    document.getElementById('uploadStatus').textContent = 'Dati cancellati. Carica un nuovo export per iniziare.';
-    renderMonthChips(); renderAll();
+      try{
+        const planRes = await kvList('yearplan:');
+        if(planRes && planRes.keys){
+          for(const k of planRes.keys){ await kvDelete(k); }
+        }
+      }catch(e){}
+      all = []; activeMonths.clear(); selected.clear(); yearPlan = [];
+      document.getElementById('uploadStatus').textContent = 'Dati cancellati. Carica un nuovo export per iniziare.';
+      renderMonthChips(); renderAll();
+    }finally{
+      hideLoading();
+    }
   });
 
   document.getElementById('btnExportData').addEventListener('click', ()=>{
     const payload = {
       exported_from: 'Libro Mastro',
       exported_at: new Date().toISOString(),
-      version: 2,
+      version: 3,
       transactions: all,
-      recurring: recurringDefs
+      recurring: recurringDefs,
+      year_plan: { year: yearPlanYear, items: yearPlan }
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
     const url = URL.createObjectURL(blob);
@@ -1847,7 +2268,7 @@
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    document.getElementById('ioStatus').textContent = all.length + ' transazioni e ' + recurringDefs.length + ' ricorrenze esportate.';
+    document.getElementById('ioStatus').textContent = all.length + ' transazioni, ' + recurringDefs.length + ' ricorrenze e ' + yearPlan.length + ' previsioni manuali esportate.';
   });
 
   document.getElementById('importDataInput').addEventListener('change', async (e)=>{
@@ -1889,25 +2310,36 @@
       const byRecId = new Map(recurringDefs.map(d=>[d.id, d]));
       for(const r of incomingRecurring){
         if(!r || !r.id || !r.name) continue;
-        const clean = {
-          id: r.id, name: r.name, category_label: r.category_label || 'Manuale',
-          flow: ['income','expense'].includes(r.flow) ? r.flow : 'income',
-          amount: Math.abs(parseFloat(r.amount)) || 0,
-          frequency: r.frequency==='yearly' ? 'yearly' : 'monthly',
-          day: parseInt(r.day,10) || 1,
-          month: parseInt(r.month,10) || 1,
-          active: r.active !== false
-        };
+        const clean = normalizeRecurringDef(r);
+        if(clean.startDate && clean.endDate && clean.startDate > clean.endDate){
+          const a = clean.startDate; clean.startDate = clean.endDate; clean.endDate = a;
+        }
         if(byRecId.has(clean.id)) recUpdated++; else recAdded++;
         byRecId.set(clean.id, clean);
         await saveRecurringDef(clean);
       }
       recurringDefs = Array.from(byRecId.values());
 
+      let planAdded = 0;
+      await ensureYearPlan();
+      const incomingPlan = (Array.isArray(payload) || !payload.year_plan) ? [] : (payload.year_plan.items || []);
+      if(payload.year_plan && String(payload.year_plan.year) === String(yearPlanYear)){
+        const byPlanId = new Map(yearPlan.map(r=>[r.id, r]));
+        for(const r of incomingPlan){
+          const clean = normalizeYearPlanItem(r);
+          if(!clean) continue;
+          if(!byPlanId.has(clean.id)) planAdded++;
+          byPlanId.set(clean.id, clean);
+        }
+        yearPlan = Array.from(byPlanId.values());
+        await saveYearPlan();
+      }
+
       renderMonthChips();
       renderAll();
       statusEl.textContent = added + ' nuove, ' + updated + ' aggiornate' +
         (incomingRecurring.length ? (' — ricorrenze: ' + recAdded + ' nuove, ' + recUpdated + ' aggiornate') : '') +
+        (planAdded ? (' — previsioni manuali: ' + planAdded + ' nuove') : '') +
         '. Totale: ' + all.length + '.';
     }catch(err){
       statusEl.textContent = 'File non valido: ' + err.message;
@@ -1931,6 +2363,9 @@
       try{
         recurringDefs = await loadRecurringDefs();
       }catch(e){ recurringDefs = []; }
+      try{
+        await ensureYearPlan();
+      }catch(e){ yearPlan = []; }
       loadForecastSettings();
       renderMonthChips();
       renderAll();
