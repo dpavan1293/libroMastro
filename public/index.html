@@ -984,6 +984,26 @@
     yearPlan = await loadYearPlan(y);
   }
 
+  // Una transazione è "collegata" a una regola se l'id è quello creato da
+  // buildRecurringTxn: "recurring-<id regola>-<YYYY-MM>".
+  const GENERATED_TXN_RE = /^recurring-(.+)-(\d{4}-\d{2})$/;
+  function isGeneratedRecurring(t){
+    return !!t && GENERATED_TXN_RE.test(String(t.transaction_id || ''));
+  }
+  // chiavi "id regola|YYYY-MM" delle ricorrenti già presenti nel registro
+  // nell'anno indicato: servono a non contare come "prevista" un'occorrenza
+  // che è già stata generata (ed è quindi già a registro)
+  function generatedRecurringKeys(y){
+    const keys = new Set();
+    all.forEach(t=>{
+      const m = GENERATED_TXN_RE.exec(String(t.transaction_id || ''));
+      if(!m) return;
+      if(m[2].slice(0,4) !== y) return;
+      keys.add(m[1] + '|' + m[2]);
+    });
+    return keys;
+  }
+
   // date in cui la regola ricorrente scatta dopo oggi ed entro fine anno
   function recurringDatesLeftInYear(def, y, today){
     const out = [];
@@ -999,12 +1019,19 @@
   }
 
   // ricorrenti attese entro fine anno, aggregate per nome
+  // Sono elencate solo le occorrenze NON ancora generate nel registro: un'occorrenza
+  // che esiste già come transazione non è una previsione, è un movimento già
+  // registrato (e finisce nel blocco "Entrate/Uscite da inizio anno"). Così la
+  // sezione si aggiorna da sola quando le ricorrenti vengono generate, modificate
+  // o cancellate nel Registro transazioni.
   function projectRecurringInYear(y, today){
+    const alreadyGenerated = generatedRecurringKeys(y);
     const groups = new Map();
     recurringDefs.forEach(raw=>{
       if(!raw || !raw.active) return;
       const d = normalizeRecurringDef(raw);
-      const dates = recurringDatesLeftInYear(d, y, today);
+      const dates = recurringDatesLeftInYear(d, y, today)
+        .filter(date => !alreadyGenerated.has(d.id + '|' + date.slice(0,7)));
       if(!dates.length) return;
       const key = d.name.trim().toLowerCase() + '|' + d.flow;
       let g = groups.get(key);
@@ -1044,11 +1071,19 @@
     document.getElementById('yearLabel').textContent = y;
 
     // trascorso: solo ciò che è già avvenuto (evita di contare due volte una
-    // ricorrente già generata ma datata nel futuro, es. stipendio del 27)
-    const elapsed = all.filter(t=> t.month && t.month.slice(0,4) === y && t.date && t.date <= today);
+    // ricorrente già generata ma datata nel futuro, es. stipendio del 27).
+    // Le ricorrenti già generate nel registro contano qui anche se la loro
+    // data cade dopo oggi: sono a registro, quindi non sono una previsione e
+    // la sezione sotto le esclude di conseguenza.
+    const elapsed = all.filter(t=>{
+      if(!t.month || t.month.slice(0,4) !== y) return false;
+      if(t.date && t.date <= today) return true;
+      return isGeneratedRecurring(t);
+    });
     const incActual = elapsed.filter(t=>t.flow==='income').reduce((s,t)=>s + t.amount, 0);
     const expActual = Math.abs(elapsed.filter(t=>t.flow==='expense').reduce((s,t)=>s + t.amount, 0));
     const invActual = Math.abs(elapsed.filter(t=>t.flow==='invest').reduce((s,t)=>s + t.amount, 0));
+    const alreadyInReg = elapsed.filter(t=> isGeneratedRecurring(t) && t.date > today);
 
     document.getElementById('yIncomeActual').textContent = eur(incActual);
     document.getElementById('yExpenseActual').textContent = eur(expActual);
@@ -1058,6 +1093,11 @@
     balEl.className = 'stamp-value ' + (balActual >= 0 ? 'pos' : 'neg');
     document.getElementById('yActualNote').textContent =
       'Transcorso dal 1° gennaio al ' + today + '.'
+      + (alreadyInReg.length
+          ? (' Include ' + alreadyInReg.length + (alreadyInReg.length === 1 ? ' ricorrente già generata' : ' ricorrenti già generate')
+              + ' nel registro e datata' + (alreadyInReg.length === 1 ? '' : 'e') + ' dopo oggi: sono già a registro, quindi non compare'
+              + (alreadyInReg.length === 1 ? '' : 'no') + ' anche tra le previste sotto.')
+          : '')
       + (invActual ? (' Nell\'anno ci sono anche ' + eur(invActual) + ' di investimenti, esclusi dal saldo qui sopra.') : '');
 
     // previste: ricorrenti attive + voci manuali
@@ -1115,7 +1155,10 @@
     document.getElementById('yTotalNote').textContent =
       'Da oggi a fine anno restano previsti ' + eur(sumInc) + ' di entrate ricorrenti e ' + eur(sumExp)
       + ' di uscite ricorrenti, più ' + eur(manualInc) + ' di entrate e ' + eur(manualExp)
-      + ' di uscite inserite a mano. Il totale somma quanto già avvenuto con quanto resta da incassare e da pagare.';
+      + ' di uscite inserite a mano. Il totale somma quanto già avvenuto con quanto resta da incassare e da pagare.'
+      + (alreadyInReg.length
+          ? (' Le ricorrenti già a registro sono contate una sola volta, nelle entrate/uscite da inizio anno, e per questo non ricompaiono fra le previste.')
+          : '');
   }
 
   async function addYearPlanItem(){
@@ -1865,6 +1908,8 @@
         }finally{
           hideLoading();
         }
+        // attivare o disattivare una regola cambia le previste: ricalcola
+        if(yearOpen) renderYearSection();
       });
     });
     body.querySelectorAll('.recurring-del').forEach(btn=>{
