@@ -1751,7 +1751,7 @@
     document.querySelectorAll('td.edit input, td.edit select').forEach(inp=>{
       inp.addEventListener('change', onCellEdit);
     });
-    document.querySelectorAll('.del-btn').forEach(btn=>{
+    document.querySelectorAll('#txnBody .del-btn').forEach(btn=>{
       btn.addEventListener('click', onDeleteRow);
     });
 
